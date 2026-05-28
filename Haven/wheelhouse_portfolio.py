@@ -269,7 +269,7 @@ def _load_pricelabs_portfolio(header: list[str], rows) -> list[Property]:
             bedrooms=_parse_int(_pick(row, "Bedroom Count")),
             automation=True,
             base_price=base_price,
-            last_booked_days=None,
+            last_booked_days=_parse_optional_int(_pick(row, "Last Booked Days")),
             adj_occ_60d=_parse_rate(_pick(row, "Total Occupancy ( Next 60 Days )")),
             adj_occ_90d=_parse_rate(_pick(row, "Total Occupancy ( Next 90 Days )")),
             min_price_occ_60d=0,

@@ -1742,6 +1742,13 @@ def _api_channel_tags(item: dict) -> str:
     return "; ".join(parts)
 
 
+def _derive_last_booked_days(item: dict) -> str:
+    for days in (3, 7, 15):
+        if int(item.get(f"booking_pickup_unique_past_{days}") or 0) > 0:
+            return str(days)
+    return ""
+
+
 def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
     header = [
         "Listing ID",
@@ -1763,6 +1770,7 @@ def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
         "Total Occupancy ( Next 90 Days )",
         "Nights Booked ( Past 7 Days )",
         "Nights Booked ( Past 15 Days )",
+        "Last Booked Days",
     ]
     rows = []
     for item in listings:
@@ -1798,6 +1806,7 @@ def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
             _api_pct(item.get("occupancy_next_90")),
             item.get("booking_pickup_past_7", ""),
             item.get("booking_pickup_past_15", ""),
+            _derive_last_booked_days(item),
         ])
 
     with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
