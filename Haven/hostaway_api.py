@@ -67,7 +67,32 @@ class HostawayClient:
         result = self._request("GET", f"listings/calendar?{query}")
         return result if isinstance(result, list) else []
 
-    def update_listing(self, listing_id: str | int, payload: dict[str, Any]) -> dict[str, Any]:
+    def reservations(self, limit: int = 500, offset: int = 0, sort_order: str = "lastUpdatedOn desc") -> list[dict[str, Any]]:
+        query = parse.urlencode({"limit": limit, "offset": offset, "sortOrder": sort_order})
+        result = self._request("GET", f"reservations?{query}")
+        return result if isinstance(result, list) else []
+
+    def last_booked_by_listing(self) -> dict[str, str]:
+        """Return {listingMapId: last_booked_date_str} for all listings using recent reservations."""
+        seen: dict[str, str] = {}
+        offset = 0
+        while True:
+            batch = self.reservations(limit=500, offset=offset)
+            if not batch:
+                break
+            for r in batch:
+                lid = str(r.get("listingMapId") or r.get("listingId") or "")
+                booked_date = (r.get("createdAt") or r.get("bookingDate") or "")[:10]
+                if lid and booked_date and lid not in seen:
+                    seen[lid] = booked_date
+            if len(batch) < 500:
+                break
+            offset += 500
+            if len(seen) > 5000:
+                break
+        return seen
+
+
         result = self._request("PUT", f"listings/{listing_id}", payload)
         return result if isinstance(result, dict) else {"result": result}
 

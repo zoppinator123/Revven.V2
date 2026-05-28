@@ -41,6 +41,7 @@ from wheelhouse_portfolio import load_portfolio, portfolio_summary, Property
 from marketing_links import lookup as lookup_links, get_links
 from pricelabs_api import PriceLabsAPIError, client_from_env
 from booking_api import BookingAPIError, build_promotion_xml, client_from_env as booking_client_from_env
+from hostaway_api import HostawayAPIError, client_from_env as hostaway_client_from_env
 from pricelabs_monthly_pacing import SOURCE as MONTHLY_PACING_SOURCE, load_monthly_pacing
 
 app = Flask(__name__)
@@ -1742,8 +1743,17 @@ def _api_channel_tags(item: dict) -> str:
     return "; ".join(parts)
 
 
-def _derive_last_booked_date(item: dict) -> str:
-    from datetime import date, datetime, timezone
+def _derive_last_booked_date(item: dict, ha_last_booked: dict | None = None) -> str:
+    from datetime import date, datetime, timezone, timedelta
+    # 1. Hostaway reservations (most accurate)
+    listing_id = str(item.get("id") or "")
+    if ha_last_booked and listing_id and listing_id in ha_last_booked:
+        try:
+            d = date.fromisoformat(ha_last_booked[listing_id][:10])
+            return d.strftime("%d %b %Y")
+        except (ValueError, TypeError):
+            pass
+    # 2. PriceLabs API field (if ever added)
     for field in ("last_booked_date", "last_booking_date", "last_booked"):
         raw = item.get(field)
         if raw:
@@ -1756,7 +1766,7 @@ def _derive_last_booked_date(item: dict) -> str:
                     return d.strftime("%d %b %Y")
                 except (ValueError, TypeError):
                     pass
-    from datetime import timedelta
+    # 3. Estimate from booking pickup windows
     today = date.today()
     for days in (3, 7, 15):
         if int(item.get(f"booking_pickup_unique_past_{days}") or 0) > 0:
@@ -1764,7 +1774,7 @@ def _derive_last_booked_date(item: dict) -> str:
     return ""
 
 
-def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
+def _write_pricelabs_api_portfolio(listings: list[dict], ha_last_booked: dict | None = None) -> dict:
     header = [
         "Listing ID",
         "Listing Name",
@@ -1821,7 +1831,7 @@ def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
             _api_pct(item.get("occupancy_next_90")),
             item.get("booking_pickup_past_7", ""),
             item.get("booking_pickup_past_15", ""),
-            _derive_last_booked_date(item),
+            _derive_last_booked_date(item, ha_last_booked or {}),
         ])
 
     with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
@@ -1842,7 +1852,11 @@ def _sync_pricelabs_api() -> dict:
     if not isinstance(listings, list):
         raise PriceLabsAPIError("PriceLabs /listings did not return a listings array.")
     PRICELABS_API_SNAPSHOT_PATH.write_text(json.dumps(response, indent=2), encoding="utf-8")
-    written = _write_pricelabs_api_portfolio(listings)
+    try:
+        ha_last_booked = hostaway_client_from_env().last_booked_by_listing()
+    except (HostawayAPIError, Exception):
+        ha_last_booked = {}
+    written = _write_pricelabs_api_portfolio(listings, ha_last_booked)
     _reload_portfolio()
     return {
         "source": "PriceLabs Customer API /listings",
