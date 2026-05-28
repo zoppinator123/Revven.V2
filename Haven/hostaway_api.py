@@ -133,6 +133,12 @@ class HostawayClient:
         return result if isinstance(result, dict) else {"result": result}
 
 
+    def reservations_for_listing(self, listing_id: str | int, limit: int = 200) -> list[dict[str, Any]]:
+        """Fetch recent reservations for a specific listing with financial data."""
+        query = parse.urlencode({"listingMapId": listing_id, "limit": limit, "sortOrder": "arrivalDate desc"})
+        result = self._request("GET", f"reservations?{query}")
+        return result if isinstance(result, list) else []
+
     def reservation_stats_by_listing(self, days_back: int = 180) -> dict[str, dict]:
         """Return per-listing reservation stats: avg lead time, avg LOS, source breakdown, total nights."""
         from datetime import date, timedelta

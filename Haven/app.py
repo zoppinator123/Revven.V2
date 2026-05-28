@@ -321,19 +321,42 @@ def _lo_occ_grade(prop) -> str:
     return "D"
 
 
+def _hostaway_ratings(prop: Property) -> dict:
+    """Compute per-channel ratings and review counts from Hostaway reviews cache."""
+    enrichment = _load_hostaway_enrichment()
+    lid = str(prop.listing_id or "").strip()
+    reviews = (enrichment.get("reviews") or {}).get(lid) or []
+    by_channel: dict[str, list] = {}
+    for r in reviews:
+        ch = str(r.get("channel") or "").lower()
+        rating = r.get("rating")
+        if rating is not None:
+            by_channel.setdefault(ch, []).append(float(rating))
+    result = {}
+    for ch, ratings in by_channel.items():
+        result[ch] = {"rating": round(sum(ratings) / len(ratings), 2), "count": len(ratings)}
+    return result
+
+
 def _listing_optimizer_html(prop) -> str:  # noqa: C901
     ll = lookup_links(prop.name)
     benchmark = _benchmark_for(prop)
+    ha_ratings = _hostaway_ratings(prop)
 
     # ── Raw data ───────────────────────────────────────────────────────────────
     airbnb_title   = (ll.airbnb_headline or "")  if ll else ""
     vrbo_title     = (ll.vrbo_headline   or "")  if ll else ""
     airbnb_photos  = ll.airbnb_photos            if ll else None
     vrbo_photos    = ll.vrbo_photos              if ll else None
-    airbnb_rating  = ll.airbnb_rating            if ll else None
-    airbnb_reviews = ll.airbnb_reviews           if ll else None
-    vrbo_rating    = ll.vrbo_rating              if ll else None
-    vrbo_reviews   = ll.vrbo_reviews             if ll else None
+    # Use marketing_links ratings first, fall back to Hostaway computed ratings
+    airbnb_rating  = (ll.airbnb_rating if ll and ll.airbnb_rating is not None
+                      else ha_ratings.get("airbnbofficial", ha_ratings.get("airbnb", {})).get("rating"))
+    airbnb_reviews = (ll.airbnb_reviews if ll and ll.airbnb_reviews is not None
+                      else ha_ratings.get("airbnbofficial", ha_ratings.get("airbnb", {})).get("count"))
+    vrbo_rating    = (ll.vrbo_rating if ll and ll.vrbo_rating is not None
+                      else ha_ratings.get("homeaway", ha_ratings.get("vrbo", {})).get("rating"))
+    vrbo_reviews   = (ll.vrbo_reviews if ll and ll.vrbo_reviews is not None
+                      else ha_ratings.get("homeaway", ha_ratings.get("vrbo", {})).get("count"))
     airbnb_url     = (ll.airbnb_url or "")       if ll else ""
     vrbo_url       = (ll.vrbo_url   or "")       if ll else ""
     booking_url    = (ll.booking_url or "")      if ll else ""
@@ -3348,6 +3371,133 @@ def trigger_sync():
         tb = traceback.format_exc()
         print(tb, flush=True)
         return jsonify({"ok": False, "error": f"Sync failed: {e}", "traceback": tb, "summary": _SUMMARY}), 500
+
+
+@app.route("/api/hostaway/revenue")
+def hostaway_revenue():
+    """Return reservations, monthly totals, and YTD stats for a listing from Hostaway."""
+    property_name = request.args.get("property", "")
+    prop = _resolve_property(property_name)
+    if not prop:
+        return jsonify({"ok": False, "error": "Property not found"}), 404
+    lid = str(prop.listing_id or "").strip()
+    if not lid:
+        return jsonify({"ok": False, "error": "No listing ID for this property"}), 400
+    try:
+        client = hostaway_client_from_env()
+        reservations = client.reservations_for_listing(lid, limit=200)
+    except (HostawayAPIError, Exception) as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    today = date.today()
+    current_year = today.year
+
+    # Build reservation rows
+    rows = []
+    monthly: dict[str, dict] = {}
+    ytd_revenue = 0.0
+    ytd_nights = 0
+
+    for r in reservations:
+        arrival = (r.get("arrivalDate") or r.get("checkIn") or "")[:10]
+        departure = (r.get("departureDate") or r.get("checkOut") or "")[:10]
+        booked = (r.get("createdAt") or r.get("bookingDate") or "")[:10]
+        if not arrival:
+            continue
+
+        # Financial data - try multiple field names Hostaway uses
+        money = r.get("money") or {}
+        rental_rev = float(money.get("rentalRevenue") or r.get("rentalRevenue") or r.get("totalPrice") or r.get("totalAmount") or 0)
+        total_rev = float(money.get("totalPrice") or money.get("totalAmount") or r.get("totalPrice") or r.get("totalAmount") or rental_rev)
+        cleaning = float(money.get("cleaningFee") or r.get("cleaningFee") or 0)
+        channel_fee = float(money.get("channelFee") or money.get("channelCommission") or r.get("channelFee") or 0)
+
+        los = 0
+        if arrival and departure:
+            try:
+                los = (date.fromisoformat(departure) - date.fromisoformat(arrival)).days
+            except (ValueError, TypeError):
+                pass
+        adr = round(rental_rev / los, 2) if los > 0 and rental_rev > 0 else 0
+
+        source = str(r.get("channelName") or r.get("source") or r.get("channel") or "direct").strip()
+        guest_count = r.get("guestCount") or r.get("numberOfGuests") or 1
+
+        rows.append({
+            "booked_date": booked,
+            "check_in": arrival,
+            "check_out": departure,
+            "los": los,
+            "rental_revenue": rental_rev,
+            "total_revenue": total_rev,
+            "cleaning_fee": cleaning,
+            "channel_fee": channel_fee,
+            "adr": adr,
+            "source": source,
+            "guest_count": guest_count,
+            "reservation_id": r.get("id") or r.get("reservationId") or "",
+        })
+
+        # Monthly aggregation (by check-in month of current year)
+        if arrival.startswith(str(current_year)):
+            month_key = arrival[:7]  # YYYY-MM
+            if month_key not in monthly:
+                monthly[month_key] = {"revenue": 0.0, "nights": 0, "reservations": 0}
+            monthly[month_key]["revenue"] += rental_rev
+            monthly[month_key]["nights"] += los
+            monthly[month_key]["reservations"] += 1
+
+        # YTD (current year arrivals up to today)
+        if arrival.startswith(str(current_year)) and arrival <= today.isoformat():
+            ytd_revenue += rental_rev
+            ytd_nights += los
+
+    # Build monthly table for current year
+    monthly_rows = []
+    for month_num in range(1, 13):
+        key = f"{current_year}-{month_num:02d}"
+        m = monthly.get(key, {})
+        nights = m.get("nights", 0)
+        rev = m.get("revenue", 0.0)
+        days_in_month = [31,28,29,31,30,31,30,31,31,30,31,30,31][month_num] if (current_year % 4 == 0 and month_num == 2) else [31,28,31,30,31,30,31,31,30,31,30,31][month_num - 1]
+        occ = round(nights / days_in_month * 100) if nights else 0
+        adr = round(rev / nights, 2) if nights else 0
+        monthly_rows.append({
+            "month": date(current_year, month_num, 1).strftime("%b %Y"),
+            "revenue": round(rev, 2),
+            "nights": nights,
+            "reservations": m.get("reservations", 0),
+            "occupancy": occ,
+            "adr": adr,
+            "is_current": month_num == today.month,
+        })
+
+    # Calendar: next 3 months
+    calendar_months = []
+    for offset in range(3):
+        m = (today.month - 1 + offset) % 12 + 1
+        y = current_year + (today.month - 1 + offset) // 12
+        import calendar as cal_mod
+        cal_days = cal_mod.monthcalendar(y, m)
+        booked_dates = {r["check_in"] for r in rows if r["check_in"] and r["check_in"] >= today.isoformat()}
+        calendar_months.append({
+            "year": y, "month": m,
+            "name": date(y, m, 1).strftime("%B %Y"),
+            "weeks": cal_days,
+            "booked": list(booked_dates),
+        })
+
+    return jsonify({
+        "ok": True,
+        "property": prop.name,
+        "listing_id": lid,
+        "reservations": rows[:50],
+        "monthly": monthly_rows,
+        "ytd_revenue": round(ytd_revenue, 2),
+        "ytd_nights": ytd_nights,
+        "calendar_months": calendar_months,
+        "year": current_year,
+    })
 
 
 @app.route("/api/portfolio")

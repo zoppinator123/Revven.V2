@@ -1299,7 +1299,7 @@ function loadReport(type) {
   if (selectedProperty) setActiveTab(type);
   const revenueCalendar = document.getElementById("revenue-calendar");
   if (type === "revenue" && selectedProperty) {
-    loadRevenueCalendar(selectedProperty);
+    loadHostawayRevenue(selectedProperty);
   } else if (revenueCalendar) {
     revenueCalendar.classList.add("hidden");
   }
@@ -1402,116 +1402,149 @@ function runCurrentReport() {
   loadReport(currentReport);
 }
 
-async function loadRevenueCalendar(prop) {
+async function loadHostawayRevenue(prop) {
   const el = document.getElementById("revenue-calendar");
   if (!el || !prop) return;
   el.classList.remove("hidden");
-  el.innerHTML = `<div class="kd-card p-4 text-sm text-slate-500">Loading revenue insights...</div>`;
+  el.innerHTML = `<div class="kd-card p-4 text-sm text-slate-500">Loading revenue data from Hostaway...</div>`;
   try {
-    const res = await fetch(`/api/revenue-calendar?property=${encodeURIComponent(prop.name)}`);
+    const res = await fetch(`/api/hostaway/revenue?property=${encodeURIComponent(prop.name)}`);
     const data = await res.json();
-    const days = data.days || [];
-    const booked = days.filter(d => d.status === "booked").length;
-    const open = days.filter(d => d.status !== "booked").length;
-    const weakCalendar = !days.length || (booked === 0 && String(data.source || "").startsWith("PriceLabs"));
-    if (weakCalendar) {
-      await loadRevenueInsights(prop, data.message);
+    if (!data.ok) {
+      el.innerHTML = `<div class="kd-card p-4 text-sm text-amber-700">${escapeHtml(data.error || "Could not load Hostaway revenue data.")}</div>`;
       return;
     }
-    const cells = days.map(d => {
-      const dt = new Date(`${d.date}T00:00:00`);
-      const label = dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      const tone = d.status === "booked"
-        ? "border-green-200 bg-green-50"
-        : d.status === "rate_only"
-          ? "border-blue-100 bg-blue-50"
-          : "border-slate-200 bg-white";
-      const meta = d.status === "booked"
-        ? `${escapeHtml(d.channel || "Booked")}${d.reservation_id ? ` #${escapeHtml(d.reservation_id)}` : ""}`
-        : d.rate ? fmtMoney(Number(d.rate)) : "Open / unsynced";
+
+    const fmt = n => n ? "$" + Number(n).toLocaleString("en-US", {minimumFractionDigits: 0, maximumFractionDigits: 0}) : "-";
+    const fmtDec = n => n ? "$" + Number(n).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "-";
+
+    // ── 3-Month Calendar ───────────────────────────────────────────────────────
+    const bookedSet = new Set((data.reservations || []).map(r => r.check_in));
+    const calMonths = (data.calendar_months || []).map(cm => {
+      const days = ["S","M","T","W","T","F","S"];
+      const header = days.map(d => `<th class="text-center text-xs font-medium text-slate-400 pb-1">${d}</th>`).join("");
+      const weeks = cm.weeks.map(week => {
+        const cells = week.map(day => {
+          if (!day) return `<td></td>`;
+          const iso = `${cm.year}-${String(cm.month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+          const isBooked = bookedSet.has(iso);
+          const cls = isBooked
+            ? "rounded-full bg-teal-500 text-white font-bold w-7 h-7 flex items-center justify-center mx-auto text-xs cursor-default"
+            : "w-7 h-7 flex items-center justify-center mx-auto text-xs text-slate-700";
+          return `<td class="py-0.5 text-center"><div class="${cls}">${day}</div></td>`;
+        }).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
       return `
-        <div class="rounded border ${tone} p-2 min-h-[74px]">
-          <div class="text-xs font-bold text-slate-800">${label}</div>
-          <div class="text-xs text-slate-500 mt-1">${escapeHtml(meta)}</div>
+        <div class="flex-1 min-w-[220px]">
+          <div class="text-sm font-bold text-slate-800 mb-2">${escapeHtml(cm.name)}</div>
+          <table class="w-full border-collapse"><thead><tr>${header}</tr></thead><tbody>${weeks}</tbody></table>
         </div>`;
     }).join("");
-    el.innerHTML = `
-      <section class="kd-card p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
-          <div>
-            <h2 class="text-sm font-bold text-slate-900">Next 30 Days Calendar</h2>
-            <p class="text-xs text-slate-500 mt-1">${escapeHtml(data.source || "Calendar")} - ${booked} booked / ${open} open</p>
-          </div>
-          ${data.message ? `<div class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1 max-w-xl">${escapeHtml(data.message)}</div>` : ""}
+
+    // ── YTD KPI bar ────────────────────────────────────────────────────────────
+    const ytdBar = `
+      <div class="flex flex-wrap gap-4 mb-4">
+        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+          <div class="text-xs text-slate-500">YTD Revenue</div>
+          <div class="text-xl font-bold text-slate-900">${fmt(data.ytd_revenue)}</div>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-10 gap-2">${cells}</div>
-      </section>`;
+        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+          <div class="text-xs text-slate-500">YTD Nights</div>
+          <div class="text-xl font-bold text-slate-900">${data.ytd_nights || "-"}</div>
+        </div>
+        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+          <div class="text-xs text-slate-500">YTD ADR</div>
+          <div class="text-xl font-bold text-slate-900">${data.ytd_nights ? fmtDec(data.ytd_revenue / data.ytd_nights) : "-"}</div>
+        </div>
+        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+          <div class="text-xs text-slate-500">Year</div>
+          <div class="text-xl font-bold text-slate-900">${data.year}</div>
+        </div>
+      </div>`;
+
+    // ── Monthly Table ──────────────────────────────────────────────────────────
+    const monthRows = (data.monthly || []).map(m => {
+      const cur = m.is_current ? `<span class="ml-2 text-xs bg-sky-100 text-sky-700 rounded px-1.5 py-0.5">Current</span>` : "";
+      const revCls = m.revenue > 0 ? "text-slate-900 font-semibold" : "text-slate-400";
+      return `<tr class="${m.is_current ? "bg-sky-50" : ""}">
+        <td class="py-2 pr-4 font-medium text-slate-700">${escapeHtml(m.month)}${cur}</td>
+        <td class="py-2 pr-4 ${revCls}">${m.revenue > 0 ? fmt(m.revenue) : "-"}</td>
+        <td class="py-2 pr-4">${m.occupancy > 0 ? m.occupancy + "%" : "-"}</td>
+        <td class="py-2 pr-4">${m.adr > 0 ? fmtDec(m.adr) : "-"}</td>
+        <td class="py-2 pr-4 text-slate-500">${m.nights || "-"}</td>
+        <td class="py-2 text-slate-500">${m.reservations || "-"}</td>
+      </tr>`;
+    }).join("");
+
+    // ── Recent Bookings Table ──────────────────────────────────────────────────
+    const resRows = (data.reservations || []).slice(0, 20).map(r => `
+      <tr>
+        <td class="py-2 pr-3 text-slate-600 whitespace-nowrap">${escapeHtml(r.booked_date || "-")}</td>
+        <td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(r.check_in || "-")}</td>
+        <td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(r.check_out || "-")}</td>
+        <td class="py-2 pr-3 text-center">${r.los || "-"}</td>
+        <td class="py-2 pr-3 font-semibold">${r.rental_revenue > 0 ? fmtDec(r.rental_revenue) : "-"}</td>
+        <td class="py-2 pr-3">${r.total_revenue > 0 ? fmtDec(r.total_revenue) : "-"}</td>
+        <td class="py-2 pr-3">${r.adr > 0 ? fmtDec(r.adr) : "-"}</td>
+        <td class="py-2 pr-3 text-slate-600">${escapeHtml(r.source || "-")}</td>
+        <td class="py-2 text-center text-slate-600">${r.guest_count || "-"}</td>
+      </tr>`).join("");
+
+    el.innerHTML = `
+      <div class="space-y-4">
+
+        <!-- 3-Month Calendar -->
+        <section class="kd-card p-4">
+          <h2 class="text-sm font-bold text-slate-900 mb-3">Calendar</h2>
+          <div class="flex flex-wrap gap-6">${calMonths}</div>
+          <div class="mt-2 flex items-center gap-2 text-xs text-slate-500">
+            <span class="inline-block w-4 h-4 rounded-full bg-teal-500"></span> Booked
+            <span class="ml-3 inline-block w-4 h-4 rounded-full bg-white border border-slate-300"></span> Open
+          </div>
+        </section>
+
+        <!-- YTD KPIs -->
+        <section class="kd-card p-4">
+          <h2 class="text-sm font-bold text-slate-900 mb-3">Year to Date — ${data.year}</h2>
+          ${ytdBar}
+        </section>
+
+        <!-- Monthly Revenue -->
+        <section class="kd-card p-4">
+          <h2 class="text-sm font-bold text-slate-900 mb-3">Monthly Revenue — ${data.year}</h2>
+          <div class="overflow-x-auto">
+            <table class="kd-table w-full text-sm">
+              <thead><tr>
+                <th>Month</th><th>Revenue</th><th>Occupancy</th><th>ADR</th><th>Nights</th><th>Reservations</th>
+              </tr></thead>
+              <tbody>${monthRows}</tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Recent Bookings -->
+        <section class="kd-card p-4">
+          <h2 class="text-sm font-bold text-slate-900 mb-3">Recent Bookings</h2>
+          <div class="overflow-x-auto">
+            <table class="kd-table w-full text-sm">
+              <thead><tr>
+                <th>Booked Date</th><th>Check In</th><th>Check Out</th><th>LOS</th>
+                <th>Rental Revenue</th><th>Total Revenue</th><th>ADR</th><th>Source</th><th>Guests</th>
+              </tr></thead>
+              <tbody>${resRows || "<tr><td colspan='9' class='py-4 text-center text-slate-400'>No reservations found</td></tr>"}</tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>`;
   } catch (e) {
-    el.innerHTML = `<div class="kd-card p-4 text-sm text-red-600">Could not load revenue calendar.</div>`;
+    el.innerHTML = `<div class="kd-card p-4 text-sm text-red-600">Could not load revenue data: ${escapeHtml(String(e))}</div>`;
   }
 }
 
-async function loadRevenueInsights(prop, calendarMessage = "") {
-  const el = document.getElementById("revenue-calendar");
-  if (!el || !prop) return;
-  try {
-    const res = await fetch(`/api/revenue-insights?property=${encodeURIComponent(prop.name)}`);
-    const data = await res.json();
-    const k = data.kpis || {};
-    const signalTone = {
-      behind_both: "border-red-200 bg-red-50 text-red-700",
-      behind_occupancy: "border-amber-200 bg-amber-50 text-amber-700",
-      behind_revenue: "border-purple-200 bg-purple-50 text-purple-700",
-      overperforming: "border-sky-200 bg-sky-50 text-sky-700",
-      monitor: "border-slate-200 bg-slate-50 text-slate-700"
-    }[data.signal] || "border-slate-200 bg-slate-50 text-slate-700";
-    const metric = (label, value, delta = "") => `
-      <div class="rounded border border-slate-200 bg-white p-3">
-        <div class="text-xs text-slate-500">${label}</div>
-        <div class="text-xl font-bold text-slate-900 mt-1">${escapeHtml(value || "-")}</div>
-        ${delta && delta !== "-" ? `<div class="text-xs ${String(delta).startsWith("-") ? "text-red-600" : "text-green-600"} mt-1">${escapeHtml(delta)}</div>` : ""}
-      </div>`;
-    const rows = (data.rows || []).map(r => `
-      <tr>
-        <td class="py-2 pr-4 font-semibold text-slate-700">${escapeHtml(r.period || "Report range")}</td>
-        <td class="py-2 pr-4">${escapeHtml(r.revenue || "-")} <span class="${String(r.revenue_delta || "").startsWith("-") ? "text-red-600" : "text-green-600"} text-xs">${escapeHtml(r.revenue_delta || "")}</span></td>
-        <td class="py-2 pr-4">${escapeHtml(r.occupancy || "-")} <span class="${String(r.occupancy_delta || "").startsWith("-") ? "text-red-600" : "text-green-600"} text-xs">${escapeHtml(r.occupancy_delta || "")}</span></td>
-        <td class="py-2 pr-4">${escapeHtml(r.adr || "-")}</td>
-        <td class="py-2 pr-4">${escapeHtml(r.revpar || "-")}</td>
-        <td class="py-2">${escapeHtml(r.market_revpar || "-")}</td>
-      </tr>`).join("");
-    el.innerHTML = `
-      <section class="kd-card p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
-          <div>
-            <h2 class="text-sm font-bold text-slate-900">Booking Insights / Monthly Performance</h2>
-            <p class="text-xs text-slate-500 mt-1">${escapeHtml(data.source || "Revenue signals")} - ${escapeHtml(data.target_dates || "current report range")}</p>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <button onclick="document.getElementById('revenue-booking-insights-input').click()" class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 font-semibold">Upload PriceLabs CSV</button>
-            <input type="file" id="revenue-booking-insights-input" accept=".csv" class="hidden" onchange="uploadRevenueBookingInsightsCSV(this)" />
-            <div class="rounded border px-3 py-2 text-xs font-semibold ${signalTone}">${escapeHtml(data.recommendation || "Monitor revenue pacing")}</div>
-          </div>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          ${metric("Revenue", k.revenue, k.revenue_yoy)}
-          ${metric("Occupancy", k.occupancy, k.occupancy_gap)}
-          ${metric("ADR / Base", k.adr)}
-          ${metric("RevPAR vs Market", `${k.revpar || "-"} / ${k.market_revpar || "-"}`)}
-        </div>
-        ${(calendarMessage || data.message) ? `<div class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2 mb-4">${escapeHtml(calendarMessage || data.message)}</div>` : ""}
-        ${rows ? `
-          <div class="overflow-x-auto">
-            <table class="kd-table w-full text-sm">
-              <thead><tr><th>Period</th><th>Revenue</th><th>Occupancy</th><th>ADR</th><th>RevPAR</th><th>Market RevPAR</th></tr></thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>` : `
-          <div class="text-sm text-slate-600">${escapeHtml(data.reason || "No monthly report-builder row is synced for this listing yet.")}</div>`}
-      </section>`;
-  } catch (e) {
-    el.innerHTML = `<div class="kd-card p-4 text-sm text-red-600">Could not load revenue insights.</div>`;
-  }
+async function loadRevenueCalendar(prop) {
+  return loadHostawayRevenue(prop);
 }
 
 async function uploadRevenueBookingInsightsCSV(input) {
