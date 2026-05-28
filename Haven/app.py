@@ -3231,6 +3231,53 @@ def healthz_db():
     }), status
 
 
+@app.route("/api/healthz/env")
+def healthz_env():
+    """Report presence (boolean only) of required env vars + runtime metadata.
+
+    Never exposes secret values. Safe to call from anywhere; intended for
+    diagnosing Vercel env-var injection issues.
+    """
+    tracked = [
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_ANON_KEY",
+        "Grok_XAI_API_KEY",
+        "GROQ_API_KEY",
+        "PRICELABS_API_KEY",
+        "BOOKING_CLIENT_ID",
+        "HOSTAWAY_API_TOKEN",
+    ]
+    env_presence: dict[str, dict] = {}
+    for name in tracked:
+        raw = os.environ.get(name)
+        stripped = (raw or "").strip()
+        env_presence[name] = {
+            "present": raw is not None,
+            "non_empty": bool(stripped),
+            "length": len(stripped) if stripped else 0,
+        }
+
+    runtime = {
+        "python_version": sys.version.split()[0],
+        "platform": sys.platform,
+        "cwd": os.getcwd(),
+        "vercel": os.environ.get("VERCEL") == "1",
+        "vercel_env": os.environ.get("VERCEL_ENV"),
+        "vercel_region": os.environ.get("VERCEL_REGION"),
+        "vercel_deployment_id": os.environ.get("VERCEL_DEPLOYMENT_ID"),
+        "vercel_git_commit_sha": os.environ.get("VERCEL_GIT_COMMIT_SHA"),
+        "vercel_url": os.environ.get("VERCEL_URL"),
+    }
+
+    return jsonify({
+        "ok": True,
+        "env": env_presence,
+        "supabase_enabled": supabase_store.is_enabled(),
+        "runtime": runtime,
+    })
+
+
 @app.route("/api/portfolio")
 def get_portfolio():
     urgency_filter = request.args.get("urgency", "all")
