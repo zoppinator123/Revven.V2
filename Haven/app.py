@@ -3273,7 +3273,10 @@ def trigger_sync():
     except PriceLabsAPIError as e:
         return jsonify({"ok": False, "error": str(e), "summary": _SUMMARY}), 400
     except Exception as e:
-        return jsonify({"ok": False, "error": f"Sync failed: {e}", "summary": _SUMMARY}), 500
+        import traceback
+        tb = traceback.format_exc()
+        print(tb, flush=True)
+        return jsonify({"ok": False, "error": f"Sync failed: {e}", "traceback": tb, "summary": _SUMMARY}), 500
 
 
 @app.route("/api/portfolio")
