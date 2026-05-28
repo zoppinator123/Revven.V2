@@ -3247,6 +3247,8 @@ def push_booking_promotion(promotion_id: str):
 @app.route("/api/sync", methods=["POST"])
 def trigger_sync():
     """Bulk-refresh dashboard data from PriceLabs Customer API."""
+    if not os.environ.get("PRICELABS_API_KEY"):
+        return jsonify({"ok": False, "error": "PRICELABS_API_KEY is not set. Add it to your .env file and restart the app.", "summary": _SUMMARY}), 400
     try:
         result = _sync_pricelabs_api()
         return jsonify({
@@ -3260,6 +3262,8 @@ def trigger_sync():
         })
     except PriceLabsAPIError as e:
         return jsonify({"ok": False, "error": str(e), "summary": _SUMMARY}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Sync failed: {e}", "summary": _SUMMARY}), 500
 
 
 @app.route("/api/portfolio")
