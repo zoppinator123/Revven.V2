@@ -1742,23 +1742,25 @@ def _api_channel_tags(item: dict) -> str:
     return "; ".join(parts)
 
 
-def _derive_last_booked_days(item: dict) -> str:
+def _derive_last_booked_date(item: dict) -> str:
     from datetime import date, datetime, timezone
     for field in ("last_booked_date", "last_booking_date", "last_booked"):
         raw = item.get(field)
         if raw:
             try:
                 dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-                return str((datetime.now(timezone.utc) - dt).days)
+                return dt.strftime("%d %b %Y")
             except (ValueError, TypeError):
                 try:
                     d = date.fromisoformat(str(raw)[:10])
-                    return str((date.today() - d).days)
+                    return d.strftime("%d %b %Y")
                 except (ValueError, TypeError):
                     pass
+    from datetime import timedelta
+    today = date.today()
     for days in (3, 7, 15):
         if int(item.get(f"booking_pickup_unique_past_{days}") or 0) > 0:
-            return str(days)
+            return (today - timedelta(days=days)).strftime("%d %b %Y")
     return ""
 
 
@@ -1783,7 +1785,7 @@ def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
         "Total Occupancy ( Next 90 Days )",
         "Nights Booked ( Past 7 Days )",
         "Nights Booked ( Past 15 Days )",
-        "Last Booked Days",
+        "Last Booked Date",
     ]
     rows = []
     for item in listings:
@@ -1819,7 +1821,7 @@ def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
             _api_pct(item.get("occupancy_next_90")),
             item.get("booking_pickup_past_7", ""),
             item.get("booking_pickup_past_15", ""),
-            _derive_last_booked_days(item),
+            _derive_last_booked_date(item),
         ])
 
     with CSV_PATH.open("w", newline="", encoding="utf-8") as f:

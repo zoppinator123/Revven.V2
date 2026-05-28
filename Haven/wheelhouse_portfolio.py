@@ -126,6 +126,19 @@ def _parse_optional_int(val: str) -> Optional[int]:
         return None
 
 
+def _parse_last_booked_days(val: str) -> Optional[int]:
+    """Parse a date string like '27 May 2026' into days since today."""
+    raw = val.strip()
+    if not raw:
+        return None
+    for fmt in ("%d %b %Y", "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
+        try:
+            return (date.today() - date(*__import__('time').strptime(raw, fmt)[:3])).days
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
 def _parse_rate(val: str) -> float:
     """Parse rate values that may be exported as 0.18 or 18 for 18%."""
     rate = _parse_float(val)
@@ -269,7 +282,7 @@ def _load_pricelabs_portfolio(header: list[str], rows) -> list[Property]:
             bedrooms=_parse_int(_pick(row, "Bedroom Count")),
             automation=True,
             base_price=base_price,
-            last_booked_days=_parse_optional_int(_pick(row, "Last Booked Days")),
+            last_booked_days=_parse_last_booked_days(_pick(row, "Last Booked Date")) or _parse_optional_int(_pick(row, "Last Booked Days")),
             adj_occ_60d=_parse_rate(_pick(row, "Total Occupancy ( Next 60 Days )")),
             adj_occ_90d=_parse_rate(_pick(row, "Total Occupancy ( Next 90 Days )")),
             min_price_occ_60d=0,
