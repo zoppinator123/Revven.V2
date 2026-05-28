@@ -13,6 +13,8 @@ import sys
 import shutil
 import threading
 import uuid
+
+import requests
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1760,13 +1762,13 @@ def _benchmark_for(prop: Property) -> dict:
     }
 
 
-def _reload_portfolio():
+def _reload_portfolio(csv_path: Path | None = None):
     """Reload portfolio data from CSV — called after a hot-reload upload."""
     global _PORTFOLIO, _PORTFOLIO_INDEX, _SUMMARY
     import marketing_links as _ml
     _ml._LINKS = None          # bust marketing links cache
     with _portfolio_lock:
-        _PORTFOLIO       = load_portfolio()
+        _PORTFOLIO       = load_portfolio(csv_path)
         _PORTFOLIO_INDEX = {p.name: p for p in _PORTFOLIO}
         _SUMMARY         = portfolio_summary(_PORTFOLIO)
     print(f"[reload] Portfolio reloaded — {_SUMMARY['total_active']} active, {_SUMMARY['critical_count']} critical")
@@ -1861,16 +1863,37 @@ def _write_pricelabs_api_portfolio(listings: list[dict]) -> dict:
             item.get("booking_pickup_past_15", ""),
         ])
 
-    with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(header)
-        writer.writerows(rows)
+    target_path = CSV_PATH
+    write_error: str | None = None
+    try:
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            writer.writerows(rows)
+    except OSError as exc:
+        # Vercel's bundled filesystem is read-only outside /tmp. Fall back to
+        # writing the regenerated CSV to /tmp so _reload_portfolio() still has
+        # fresh data; Supabase remains the durable copy.
+        fallback = Path("/tmp") / CSV_PATH.name
+        try:
+            with fallback.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                writer.writerows(rows)
+            target_path = fallback
+        except OSError as exc2:
+            write_error = f"{type(exc).__name__}: {exc}; fallback failed: {type(exc2).__name__}: {exc2}"
 
     active_rows = [
         row for row in rows
         if str(row[2]).upper() == "TRUE" and str(row[3]).upper() == "TRUE"
     ]
-    return {"total": len(rows), "active": len(active_rows), "path": str(CSV_PATH)}
+    return {
+        "total": len(rows),
+        "active": len(active_rows),
+        "path": str(target_path),
+        "write_error": write_error,
+    }
 
 
 def _sync_pricelabs_api() -> dict:
@@ -1885,12 +1908,15 @@ def _sync_pricelabs_api() -> dict:
         pass
     supabase_store.save_pricelabs_snapshot(response)
     written = _write_pricelabs_api_portfolio(listings)
-    _reload_portfolio()
+    reload_path = Path(written["path"]) if written.get("path") else None
+    _reload_portfolio(reload_path)
     return {
         "source": "PriceLabs Customer API /listings",
         "listings_total": written["total"],
         "listings_active": written["active"],
         "snapshot": str(PRICELABS_API_SNAPSHOT_PATH),
+        "portfolio_csv": written.get("path"),
+        "csv_write_error": written.get("write_error"),
     }
 
 
@@ -3222,7 +3248,23 @@ def trigger_sync():
             "summary": _SUMMARY,
         })
     except PriceLabsAPIError as e:
-        return jsonify({"ok": False, "error": str(e), "summary": _SUMMARY}), 400
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+            "error_type": "PriceLabsAPIError",
+            "summary": _SUMMARY,
+        }), 400
+    except Exception as e:  # noqa: BLE001
+        # Return JSON (not Vercel's generic HTML 500) so clients/logs can see why.
+        message = str(e) or repr(e)
+        if len(message) > 800:
+            message = message[:800] + "…"
+        return jsonify({
+            "ok": False,
+            "error": message,
+            "error_type": type(e).__name__,
+            "summary": _SUMMARY,
+        }), 500
 
 
 @app.route("/api/healthz/db")
@@ -3289,6 +3331,75 @@ def healthz_env():
         "ai_provider": get_active_provider_info(),
         "runtime": runtime,
     })
+
+
+@app.route("/api/healthz/pricelabs")
+def healthz_pricelabs():
+    """Diagnose PriceLabs Customer API connectivity.
+
+    Performs a single read-only GET /listings call with the configured key.
+    Never echoes the key. The response is intentionally small: presence of the
+    key, the base URL the client uses, the HTTP status code observed, and
+    either a listing count (success) or a sanitized error type + truncated
+    message (failure). No write endpoints are touched.
+    """
+    api_key = (os.environ.get("PRICELABS_API_KEY") or "").strip()
+    base_url = (
+        os.environ.get("PRICELABS_API_BASE_URL")
+        or "https://api.pricelabs.co/v1"
+    ).rstrip("/")
+    result: dict = {
+        "ok": False,
+        "configured": bool(api_key),
+        "base_url": base_url,
+        "key_length": len(api_key) if api_key else 0,
+        "status_code": None,
+        "listing_count": None,
+        "error_type": None,
+        "error_message": None,
+    }
+
+    if not api_key:
+        result["error_type"] = "MissingEnv"
+        result["error_message"] = "PRICELABS_API_KEY is not set or is empty."
+        return jsonify(result), 503
+
+    url = f"{base_url}/listings"
+    headers = {
+        "X-API-Key": api_key,
+        "Accept": "application/json",
+        "User-Agent": "HVR-Smokies-Dashboard/1.0 (+healthz)",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+    except requests.RequestException as exc:
+        result["error_type"] = type(exc).__name__
+        result["error_message"] = str(exc)[:400]
+        return jsonify(result), 502
+
+    result["status_code"] = resp.status_code
+    if resp.status_code >= 400:
+        body = (resp.text or "")[:400]
+        result["error_type"] = f"HTTP{resp.status_code}"
+        result["error_message"] = body
+        return jsonify(result), 502
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        result["error_type"] = "InvalidJSON"
+        result["error_message"] = (resp.text or "")[:400]
+        return jsonify(result), 502
+
+    listings = payload.get("listings") if isinstance(payload, dict) else payload
+    if not isinstance(listings, list):
+        result["error_type"] = "UnexpectedShape"
+        result["error_message"] = "Response did not contain a listings array."
+        return jsonify(result), 502
+
+    result["ok"] = True
+    result["listing_count"] = len(listings)
+    return jsonify(result), 200
 
 
 @app.route("/api/healthz/ai")

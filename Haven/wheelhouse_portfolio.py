@@ -307,17 +307,18 @@ def _load_pricelabs_portfolio(header: list[str], rows) -> list[Property]:
     return properties
 
 
-def load_portfolio() -> list[Property]:
+def load_portfolio(csv_path: Path | None = None) -> list[Property]:
     """
     Parse pricelabs_portfolio.csv and return active properties sorted by urgency
     (critical first, then warning, then ok), with lowest score first within each tier.
     """
     properties: list[Property] = []
 
-    if not CSV_PATH.exists():
+    source = csv_path or CSV_PATH
+    if not source.exists():
         return properties
 
-    with open(CSV_PATH, newline="", encoding="utf-8-sig") as f:
+    with open(source, newline="", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
         first_row = next(reader, [])
         if "Listing ID" in first_row and "Listing Sync" in first_row:
