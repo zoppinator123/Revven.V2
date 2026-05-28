@@ -62,11 +62,12 @@ After the deploy finishes:
 - Hit the production URL — the dashboard index should render.
 - Confirm in Vercel logs that the Flask app booted without `KeyError` on env vars.
 - Check that Groq-streamed analyses succeed (requires `GROQ_API_KEY`).
+- Hit `/api/healthz/db` — expect `{"ok": true, "configured": true, "schema": "revven", ...}` when Supabase is wired correctly. A 503 with `configured: false` means `SUPABASE_SERVICE_ROLE_KEY` is missing; a 503 with `configured: true` indicates the `revven.healthz` query failed (check the returned `error` field).
 
 ## Known limitations & gotchas
 
 - **Cold starts.** Bundling ~48 MB of pre-computed CSV/JSON snapshots into the function means cold starts will be slower than typical. Acceptable for an internal ops dashboard.
-- **Read-only filesystem.** Vercel serverless functions can only write to `/tmp`. Anywhere the app currently writes JSON back to disk (e.g. `pricelabs_weekly_action_queue.json`, `booking_promotion_lab.json`) is **ephemeral**. Persistent action state needs to be migrated to the Haven Supabase project before this dashboard is relied on in production.
+- **Read-only filesystem.** Vercel serverless functions can only write to `/tmp`. The dashboard now persists pricing actions, Booking.com promotions, and PriceLabs snapshots to the isolated `revven` schema (tables `pricing_actions`, `booking_promotions`, `pricelabs_snapshots`) in the Haven Supabase project when `SUPABASE_SERVICE_ROLE_KEY` is configured. CSV uploads via `/api/reload` are mirrored to the `revven-uploads` Supabase Storage bucket. If the service-role key is missing or a call fails, the app silently falls back to the bundled JSON/CSV files (read-only but functional in serverless). Verify connectivity from a deploy with `GET /api/healthz/db`.
 - **No Playwright on Vercel.** `Haven/requirements.txt` lists `playwright` for the local PriceLabs browser-export sync; the root `requirements.txt` used by Vercel intentionally excludes it. Run browser-based sync locally only.
 - **Long-running streams.** The dashboard uses Server-Sent Events for Groq analyses. Vercel's default Hobby plan caps function execution at 10 s; use Pro for the 60–300 s budgets the longer reports need.
 - **Function size.** The included data files put the function near (but under) Vercel's 250 MB unzipped limit. If new large snapshots are added, move them to Supabase Storage or a separate bucket instead of bundling.

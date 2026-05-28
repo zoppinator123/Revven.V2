@@ -42,6 +42,7 @@ from marketing_links import lookup as lookup_links, get_links
 from pricelabs_api import PriceLabsAPIError, client_from_env
 from booking_api import BookingAPIError, build_promotion_xml, client_from_env as booking_client_from_env
 from pricelabs_monthly_pacing import SOURCE as MONTHLY_PACING_SOURCE, load_monthly_pacing
+import supabase_store
 
 app = Flask(__name__)
 TODAY = date.today()
@@ -82,7 +83,7 @@ def _resolve_property(name: str) -> Property | None:
     return None
 
 
-def _load_actions() -> list[dict]:
+def _load_actions_from_json() -> list[dict]:
     if not ACTION_QUEUE_PATH.exists():
         return []
     try:
@@ -91,11 +92,38 @@ def _load_actions() -> list[dict]:
         return []
 
 
+def _save_actions_to_json(actions: list[dict]) -> None:
+    try:
+        ACTION_QUEUE_PATH.write_text(json.dumps(actions, indent=2), encoding="utf-8")
+    except OSError:
+        # Vercel filesystem is read-only outside /tmp; Supabase is the source of
+        # truth when configured, so swallow this and rely on the table.
+        pass
+
+
+def _load_actions() -> list[dict]:
+    if supabase_store.is_enabled():
+        remote = supabase_store.load_pricing_actions()
+        if remote is None:
+            return _load_actions_from_json()
+        if remote:
+            return remote
+        # Empty table on first read — backfill from the bundled JSON snapshot.
+        seed = _load_actions_from_json()
+        if seed and supabase_store.save_pricing_actions(seed):
+            return seed
+        return seed
+    return _load_actions_from_json()
+
+
 def _save_actions(actions: list[dict]) -> None:
-    ACTION_QUEUE_PATH.write_text(json.dumps(actions, indent=2), encoding="utf-8")
+    if supabase_store.is_enabled():
+        if supabase_store.save_pricing_actions(actions):
+            return
+    _save_actions_to_json(actions)
 
 
-def _load_booking_promotions() -> list[dict]:
+def _load_booking_promotions_from_json() -> list[dict]:
     if not BOOKING_PROMOTIONS_PATH.exists():
         return []
     try:
@@ -104,8 +132,32 @@ def _load_booking_promotions() -> list[dict]:
         return []
 
 
+def _save_booking_promotions_to_json(promotions: list[dict]) -> None:
+    try:
+        BOOKING_PROMOTIONS_PATH.write_text(json.dumps(promotions, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _load_booking_promotions() -> list[dict]:
+    if supabase_store.is_enabled():
+        remote = supabase_store.load_booking_promotions()
+        if remote is None:
+            return _load_booking_promotions_from_json()
+        if remote:
+            return remote
+        seed = _load_booking_promotions_from_json()
+        if seed and supabase_store.save_booking_promotions(seed):
+            return seed
+        return seed
+    return _load_booking_promotions_from_json()
+
+
 def _save_booking_promotions(promotions: list[dict]) -> None:
-    BOOKING_PROMOTIONS_PATH.write_text(json.dumps(promotions, indent=2), encoding="utf-8")
+    if supabase_store.is_enabled():
+        if supabase_store.save_booking_promotions(promotions):
+            return
+    _save_booking_promotions_to_json(promotions)
 
 
 def _listing_quality_rules() -> str:
@@ -1817,7 +1869,12 @@ def _sync_pricelabs_api() -> dict:
     listings = response.get("listings") if isinstance(response, dict) else response
     if not isinstance(listings, list):
         raise PriceLabsAPIError("PriceLabs /listings did not return a listings array.")
-    PRICELABS_API_SNAPSHOT_PATH.write_text(json.dumps(response, indent=2), encoding="utf-8")
+    try:
+        PRICELABS_API_SNAPSHOT_PATH.write_text(json.dumps(response, indent=2), encoding="utf-8")
+    except OSError:
+        # Read-only filesystem on Vercel — Supabase is the durable copy below.
+        pass
+    supabase_store.save_pricelabs_snapshot(response)
     written = _write_pricelabs_api_portfolio(listings)
     _reload_portfolio()
     return {
@@ -2848,6 +2905,21 @@ def index():
     return render_template("index.html", summary=_SUMMARY, today=TODAY.isoformat())
 
 
+def _persist_upload(file_storage, local_path: Path, remote_name: str) -> None:
+    """Save an uploaded file locally (best-effort) and mirror to Supabase Storage.
+
+    The local write is wrapped in try/except so the read-only Vercel filesystem
+    does not break the request when Supabase Storage is the durable target.
+    """
+    body = file_storage.read()
+    try:
+        local_path.write_bytes(body)
+    except OSError:
+        pass
+    if supabase_store.is_enabled():
+        supabase_store.upload_csv(remote_name, body)
+
+
 @app.route("/api/reload", methods=["POST"])
 def reload_data():
     """
@@ -2860,19 +2932,19 @@ def reload_data():
     if "pricelabs_csv" in request.files or "wheelhouse_csv" in request.files:
         f = request.files.get("pricelabs_csv") or request.files["wheelhouse_csv"]
         if f.filename:
-            f.save(str(CSV_PATH))
+            _persist_upload(f, CSV_PATH, "pricelabs_portfolio.csv")
             updated.append("pricelabs")
 
     if "marketing_csv" in request.files:
         f = request.files["marketing_csv"]
         if f.filename:
-            f.save(str(MARKETING_PATH))
+            _persist_upload(f, MARKETING_PATH, "marketing_links.csv")
             updated.append("marketing")
 
     if "report_builder_csv" in request.files:
         f = request.files["report_builder_csv"]
         if f.filename:
-            f.save(str(MONTHLY_PACING_PATH))
+            _persist_upload(f, MONTHLY_PACING_PATH, "pricelabs_report_builder_monthly.csv")
             updated.append("report_builder")
 
     if updated:
@@ -3142,6 +3214,21 @@ def trigger_sync():
         })
     except PriceLabsAPIError as e:
         return jsonify({"ok": False, "error": str(e), "summary": _SUMMARY}), 400
+
+
+@app.route("/api/healthz/db")
+def healthz_db():
+    """Confirm service-role access to ``revven.healthz`` without leaking secrets."""
+    result = supabase_store.healthz()
+    status = 200 if result.get("ok") else 503
+    return jsonify({
+        "ok": bool(result.get("ok")),
+        "configured": bool(result.get("configured")),
+        "schema": supabase_store.SCHEMA,
+        "table": supabase_store.TABLE_HEALTHZ,
+        "rows": result.get("rows", 0),
+        "error": result.get("error"),
+    }), status
 
 
 @app.route("/api/portfolio")

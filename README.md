@@ -7,7 +7,7 @@ Revven.V2 is the **HavenOS-connected dashboard and workflow layer for Haven Vaca
 HavenOS is the shared operational backbone for Haven Vacation Rentals. Revven.V2 plugs into it as:
 
 - **A dashboard / workflow layer** — Flask UI that surfaces PriceLabs, Booking.com, Hostaway, and listing-quality data for the Haven portfolio.
-- **A HavenOS client, not a source of truth** — persistent state (portfolio metadata, applied-action history, listing IDs) is expected to live in the Haven Supabase project. Revven.V2 connects to it via environment variables; it never ships keys in the repo.
+- **A HavenOS client, not a source of truth** — persistent state (portfolio metadata, applied-action history, listing IDs) is expected to live in the Haven Supabase project. Revven.V2 connects to it via environment variables; it never ships keys in the repo. Revven-owned tables are isolated in a `revven` schema (`pricing_actions`, `booking_promotions`, `pricelabs_snapshots`, `healthz`) and CSV uploads target the `revven-uploads` Storage bucket — no HavenOS public tables are touched. When `SUPABASE_SERVICE_ROLE_KEY` is unset or a call fails, the app falls back to the bundled JSON/CSV snapshots.
 - **One of several Haven surfaces** — other HavenOS surfaces (guest-facing, ops, etc.) read from and write to the same Supabase project, so changes here must respect the shared schema.
 
 ## What it does
