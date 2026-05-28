@@ -8,7 +8,10 @@ This client version focuses on PriceLabs for revenue-management pricing decision
 
 ```bash
 cd /path/to/MPP
-export Grok_XAI_API_KEY="your_api_key_here"   # legacy fallback: GROQ_API_KEY
+export Grok_XAI_API_KEY="your_xai_api_key_here"   # xAI/Grok key. XAI_API_KEY also accepted; GROQ_API_KEY only as last-resort fallback.
+# Optional overrides:
+# export XAI_MODEL="grok-4-fast-reasoning"
+# export XAI_BASE_URL="https://api.x.ai/v1"
 export PRICELABS_API_KEY="your_pricelabs_customer_api_key"
 export PRICELABS_EMAIL="your_pricelabs_email"
 export PRICELABS_PASSWORD="your_pricelabs_password"
@@ -27,7 +30,8 @@ http://localhost:8080
 ## Main Files
 
 - `app.py` - Flask web dashboard entry point.
-- `dashboard_analysis.py` - Groq-powered analysis engine used by the dashboard.
+- `dashboard_analysis.py` - xAI (Grok) powered analysis engine used by the dashboard.
+- `xai_client.py` - Minimal OpenAI-compatible HTTP client for xAI's chat-completions API (replaces the prior Groq SDK).
 - `wheelhouse_portfolio.py` - Legacy-named parser for the active `pricelabs_portfolio.csv` export.
 - `marketing_links.py` - Loads Airbnb/VRBO listing links, ratings, review counts, and PMS IDs.
 - `pricelabs_api.py` - PriceLabs Customer API authentication/request helper.

@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
 """
 HVR Smokies Dashboard.
-Serves the HTML dashboard and streams Groq analysis via Server-Sent Events.
+Serves the HTML dashboard and streams xAI (Grok) analysis via Server-Sent Events.
 """
 
 import html as _html_lib
@@ -36,7 +36,16 @@ def _load_dotenv(path: Path) -> None:
 _load_dotenv(Path(__file__).parent / ".env")
 
 sys.path.insert(0, ".")
-from dashboard_analysis import AI_API_KEY_ENV_VARS, GROQ_FALLBACKS, _get_ai_api_key, _groq_client
+from dashboard_analysis import (
+    AI_API_KEY_ENV_VARS,
+    AI_MODEL,
+    AI_MODEL_FALLBACKS,
+    GROQ_FALLBACKS,  # legacy alias, retained for any external import
+    _ai_client,
+    _get_ai_api_key,
+    _groq_client,    # legacy alias for _ai_client
+)
+from xai_client import APIStatusError as AIAPIStatusError, get_active_provider_info
 from wheelhouse_portfolio import load_portfolio, portfolio_summary, Property
 from marketing_links import lookup as lookup_links, get_links
 from pricelabs_api import PriceLabsAPIError, client_from_env
@@ -1694,9 +1703,9 @@ Rules:
 - If Booking.com ID is missing, say it cannot be pushed by API yet.
 """.strip()
     try:
-        client = _groq_client()
+        client = _ai_client()
         response = client.chat.completions.create(
-            model=GROQ_FALLBACKS[0],
+            model=AI_MODEL,
             messages=[
                 {"role": "system", "content": "You are an STR revenue manager reviewing Booking.com promotions. Be concise, numeric, and cautious about discount stacking."},
                 {"role": "user", "content": prompt},
@@ -3243,6 +3252,9 @@ def healthz_env():
         "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_ANON_KEY",
         "Grok_XAI_API_KEY",
+        "XAI_API_KEY",
+        "XAI_MODEL",
+        "XAI_BASE_URL",
         "GROQ_API_KEY",
         "PRICELABS_API_KEY",
         "BOOKING_CLIENT_ID",
@@ -3274,8 +3286,23 @@ def healthz_env():
         "ok": True,
         "env": env_presence,
         "supabase_enabled": supabase_store.is_enabled(),
+        "ai_provider": get_active_provider_info(),
         "runtime": runtime,
     })
+
+
+@app.route("/api/healthz/ai")
+def healthz_ai():
+    """Report which AI provider/model/key is configured (presence only).
+
+    Never exposes secret values. Safe to call from anywhere; intended for
+    diagnosing whether xAI credentials are wired up correctly.
+    """
+    info = get_active_provider_info()
+    return jsonify({
+        "ok": bool(info.get("key_present")),
+        **info,
+    }), (200 if info.get("key_present") else 503)
 
 
 @app.route("/api/portfolio")
@@ -3369,7 +3396,7 @@ def stream_report():
 
     def generate():
         try:
-            client = _groq_client()
+            client = _ai_client()
 
             SHORT_SYSTEM = (
                 "You are an expert STR revenue manager and listing optimizer for HVR Smokies vacation rentals. "
@@ -3389,10 +3416,7 @@ def stream_report():
 
             def call_with_fallback(msgs):
                 """Try each model in the cascade until one succeeds."""
-                from groq import APIStatusError
-                models = GROQ_FALLBACKS
-                if report_type == "listing":
-                    models = ["llama-3.3-70b-versatile"] + [m for m in GROQ_FALLBACKS if m != "llama-3.3-70b-versatile"]
+                models = AI_MODEL_FALLBACKS
                 for model in models:
                     try:
                         kwargs = dict(
@@ -3402,7 +3426,7 @@ def stream_report():
                             temperature=0.2 if report_type == "listing" else 0.4,
                         )
                         return client.chat.completions.create(**kwargs), model
-                    except APIStatusError as e:
+                    except AIAPIStatusError as e:
                         if e.status_code in (429, 413):
                             continue   # rate limit or too large — try next model
                         raise

@@ -11,7 +11,13 @@ import sys
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from groq import Groq
+from xai_client import (
+    AI_API_KEY_ENV_VARS,
+    XAIClient,
+    build_client as _build_xai_client,
+    get_ai_api_key as _get_ai_api_key,
+    get_xai_model,
+)
 
 import sample_data as data
 
@@ -558,21 +564,35 @@ def dispatch_tool(name: str, inputs: dict) -> Any:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Groq tool format + agent loop
+# xAI (Grok) tool format + agent loop
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Model cascade — if first hits daily limit (429), falls back to next
-GROQ_MODEL      = "llama-3.1-8b-instant"        # primary: 500K TPD free tier
-GROQ_MODEL_FAST = "llama-3.1-8b-instant"        # same — kept for compatibility
-GROQ_FALLBACKS  = [
-    "llama-3.1-8b-instant",                     # 500K TPD
-    "gemma2-9b-it",                              # 500K TPD (Google Gemma)
-    "llama-3.3-70b-versatile",                   # 100K TPD — last resort
+# Model cascade for AI report generation. ``XAI_MODEL`` env var overrides the
+# primary; the fallback list is used for opportunistic retries on transient
+# upstream errors. xAI exposes an OpenAI-compatible chat-completions API.
+AI_MODEL_FALLBACKS = [
+    "grok-4-fast-reasoning",
+    "grok-4-fast",
+    "grok-3-mini",
 ]
 
+# Backwards-compatible aliases retained for any external import that referenced
+# the old Groq-era names. New code should use AI_MODEL / AI_MODEL_FALLBACKS.
+def _resolve_primary_model() -> str:
+    configured = get_xai_model()
+    if configured and configured not in AI_MODEL_FALLBACKS:
+        return configured
+    return configured or AI_MODEL_FALLBACKS[0]
 
-def _build_groq_tools() -> list[dict]:
-    """Convert TOOLS list to Groq/OpenAI function-calling format."""
+
+AI_MODEL = _resolve_primary_model()
+GROQ_MODEL = AI_MODEL              # legacy alias
+GROQ_MODEL_FAST = AI_MODEL         # legacy alias
+GROQ_FALLBACKS = [AI_MODEL] + [m for m in AI_MODEL_FALLBACKS if m != AI_MODEL]
+
+
+def _build_ai_tools() -> list[dict]:
+    """Convert TOOLS list to OpenAI / xAI function-calling format."""
     result = []
     for t in TOOLS:
         schema = t.get("input_schema", {})
@@ -588,33 +608,21 @@ def _build_groq_tools() -> list[dict]:
     return result
 
 
-GROQ_TOOLS = _build_groq_tools()
+AI_TOOLS = _build_ai_tools()
+GROQ_TOOLS = AI_TOOLS   # legacy alias
 
 
-# Primary env var: Grok_XAI_API_KEY (Vercel). Fallback: GROQ_API_KEY (legacy / local).
-AI_API_KEY_ENV_VARS = ("Grok_XAI_API_KEY", "GROQ_API_KEY")
+def _ai_client() -> XAIClient:
+    return _build_xai_client()
 
 
-def _get_ai_api_key() -> str | None:
-    for name in AI_API_KEY_ENV_VARS:
-        value = os.environ.get(name)
-        if value:
-            return value
-    return None
-
-
-def _groq_client() -> Groq:
-    api_key = _get_ai_api_key()
-    if not api_key:
-        raise RuntimeError(
-            f"Set one of {', '.join(AI_API_KEY_ENV_VARS)} before invoking the AI client."
-        )
-    return Groq(api_key=api_key)
+# Legacy alias kept so any older imports continue to work.
+_groq_client = _ai_client
 
 
 def run_revenue_audit(user_prompt: str, verbose: bool = True) -> str:
-    """Run a full revenue audit using Groq Llama 3.3 70B with function calling."""
-    client = _groq_client()
+    """Run a full revenue audit using xAI Grok with function calling."""
+    client = _ai_client()
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",   "content": user_prompt},
@@ -622,9 +630,9 @@ def run_revenue_audit(user_prompt: str, verbose: bool = True) -> str:
 
     while True:
         response = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=AI_MODEL,
             messages=messages,
-            tools=GROQ_TOOLS,
+            tools=AI_TOOLS,
             tool_choice="auto",
             max_tokens=4096,
         )

@@ -78,7 +78,8 @@ vercel --prod       # production deploy
 
 **Integrations**
 
-- `Grok_XAI_API_KEY` *(preferred; falls back to `GROQ_API_KEY` if unset)*
+- `Grok_XAI_API_KEY` *(preferred xAI/Grok key; also accepts `XAI_API_KEY`. `GROQ_API_KEY` is consulted only as a last-resort fallback for legacy local setups.)*
+- Optional AI overrides: `XAI_MODEL` (default `grok-4-fast-reasoning`), `XAI_BASE_URL` (default `https://api.x.ai/v1`).
 - `PRICELABS_API_KEY`, `PRICELABS_EMAIL`, `PRICELABS_PASSWORD`, optional `PRICELABS_POST_APPLY_ENDPOINTS`
 - `BOOKING_CLIENT_ID`, `BOOKING_CLIENT_SECRET`
 - `HOSTAWAY_API_TOKEN`
