@@ -1743,6 +1743,19 @@ def _api_channel_tags(item: dict) -> str:
 
 
 def _derive_last_booked_days(item: dict) -> str:
+    from datetime import date, datetime, timezone
+    for field in ("last_booked_date", "last_booking_date", "last_booked"):
+        raw = item.get(field)
+        if raw:
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                return str((datetime.now(timezone.utc) - dt).days)
+            except (ValueError, TypeError):
+                try:
+                    d = date.fromisoformat(str(raw)[:10])
+                    return str((date.today() - d).days)
+                except (ValueError, TypeError):
+                    pass
     for days in (3, 7, 15):
         if int(item.get(f"booking_pickup_unique_past_{days}") or 0) > 0:
             return str(days)
