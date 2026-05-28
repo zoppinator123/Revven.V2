@@ -1862,13 +1862,14 @@ def _write_pricelabs_api_portfolio(listings: list[dict], ha_last_booked: dict | 
 
 
 def _sync_hostaway_enrichment() -> dict[str, Any]:
-    """Fetch Hostaway listings + reservation stats and cache to disk."""
+    """Fetch Hostaway listings, reservation stats, and reviews and cache to disk."""
     try:
         client = hostaway_client_from_env()
         listings = client.listings(limit=500)
         listing_map = {str(l.get("id") or l.get("listingMapId", "")): l for l in listings if l}
         stats = client.reservation_stats_by_listing(days_back=180)
-        enrichment = {"listings": listing_map, "reservation_stats": stats}
+        reviews = client.reviews_by_listing(limit_per_listing=5)
+        enrichment = {"listings": listing_map, "reservation_stats": stats, "reviews": reviews}
         HOSTAWAY_ENRICHMENT_PATH.write_text(json.dumps(enrichment, indent=2), encoding="utf-8")
         return enrichment
     except (HostawayAPIError, Exception):
@@ -1896,9 +1897,11 @@ def _hostaway_context(prop: Property) -> str:
         return ""
     listing_map = enrichment.get("listings", {})
     stats_map = enrichment.get("reservation_stats", {})
+    reviews_map = enrichment.get("reviews", {})
     lid = str(prop.listing_id or "").strip()
     ha = listing_map.get(lid) or {}
     stats = stats_map.get(lid) or {}
+    reviews = reviews_map.get(lid) or []
     if not ha and not stats:
         return ""
     lines = ["Hostaway Listing Data:"]
@@ -1908,6 +1911,21 @@ def _hostaway_context(prop: Property) -> str:
         lines.append(f"  Bathrooms: {ha['bathroomsNumber']}")
     if ha.get("checkInTimeStart") or ha.get("checkOutTime"):
         lines.append(f"  Check-in: {ha.get('checkInTimeStart', 'unknown')}  |  Check-out: {ha.get('checkOutTime', 'unknown')}")
+    # Cleaning fee from PriceLabs snapshot
+    pl_data = next((l for l in _load_pricelabs_snapshot() if str(l.get("id","")) == lid), {})
+    if pl_data.get("cleaning_fees"):
+        lines.append(f"  Cleaning Fee: ${pl_data['cleaning_fees']:.0f}")
+    # OTA channels and service fees
+    channels = ha.get("channelListingDetails") or pl_data.get("channel_listing_details") or []
+    if channels:
+        ota_fees = {"airbnb": "3% host fee", "vrbo": "5% host fee", "booking.com": "15% commission", "bookingcom": "15% commission"}
+        ch_lines = []
+        for ch in channels:
+            name = str(ch.get("channel_name") or ch.get("channelName") or "").lower()
+            ch_id = ch.get("channel_listing_id") or ch.get("channelListingId") or ""
+            fee = ota_fees.get(name, "fee unknown")
+            ch_lines.append(f"{name} (ID: {ch_id}, {fee})")
+        lines.append(f"  OTA Channels: {'; '.join(ch_lines)}")
     amenities = ha.get("amenities") or []
     if isinstance(amenities, list) and amenities:
         lines.append(f"  Amenities ({len(amenities)} total): {', '.join(str(a) for a in amenities[:20])}")
@@ -1929,7 +1947,21 @@ def _hostaway_context(prop: Property) -> str:
         if sources:
             top = sorted(sources.items(), key=lambda x: x[1], reverse=True)[:5]
             lines.append(f"  Booking sources: {', '.join(f'{s}={n}' for s, n in top)}")
+    if reviews:
+        lines.append(f"Recent Guest Reviews ({len(reviews)} most recent):")
+        for r in reviews:
+            rating = f"{r['rating']}/5" if r.get("rating") else "no rating"
+            comment = r.get("comment") or "no comment"
+            lines.append(f"  [{r.get('date','')} {r.get('channel','')} {rating}] {comment}")
     return "\n".join(lines)
+
+
+def _load_pricelabs_snapshot() -> list[dict]:
+    try:
+        data = json.loads(PRICELABS_API_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        return data.get("listings", data) if isinstance(data, dict) else data
+    except Exception:
+        return []
 
 
 def _sync_pricelabs_api() -> dict:
@@ -2494,8 +2526,18 @@ def _local_listing_optimizer_report(prop: Property, error: Exception | None = No
     airbnb_rating = _format_rating(ll.airbnb_rating, ll.airbnb_reviews) if ll else "unknown"
     vrbo_rating = _format_rating(ll.vrbo_rating, ll.vrbo_reviews) if ll else "unknown"
     airbnb_photos = _format_count(ll.airbnb_photos) if ll else "unknown"
-    ha_ctx = _hostaway_context(prop)
     vrbo_photos = _format_count(ll.vrbo_photos) if ll else "unknown"
+    ha_ctx = _hostaway_context(prop)
+    # Pull enrichment data directly for structured display
+    enrichment = _load_hostaway_enrichment()
+    lid = str(prop.listing_id or "").strip()
+    ha = (enrichment.get("listings") or {}).get(lid) or {}
+    ha_reviews = (enrichment.get("reviews") or {}).get(lid) or []
+    pl_listings = _load_pricelabs_snapshot()
+    pl_data = next((l for l in pl_listings if str(l.get("id","")) == lid), {})
+    cleaning_fee = pl_data.get("cleaning_fees")
+    channels = ha.get("channelListingDetails") or pl_data.get("channel_listing_details") or []
+    ota_fee_map = {"airbnb": "3% host fee", "vrbo": "5% host fee", "booking.com": "15% commission", "bookingcom": "15% commission"}
     evidence = []
     if ll and (ll.airbnb_headline or ll.vrbo_headline):
         evidence.append("titles")
@@ -2503,17 +2545,40 @@ def _local_listing_optimizer_report(prop: Property, error: Exception | None = No
         evidence.append("photo counts")
     if ll and (ll.airbnb_rating is not None or ll.vrbo_rating is not None):
         evidence.append("ratings/reviews")
+    if ha_reviews:
+        evidence.append("hostaway reviews")
     score_note = "provisional" if len(evidence) < 3 else "evidence-based"
     ai_note = f"\n\n_AI provider unavailable: {error}_" if error else ""
+
+    # OTA channels section
+    ota_lines = []
+    for ch in channels:
+        name = str(ch.get("channel_name") or ch.get("channelName") or "").lower()
+        ch_id = ch.get("channel_listing_id") or ch.get("channelListingId") or "unknown"
+        fee = ota_fee_map.get(name, "fee unknown")
+        ota_lines.append(f"- {name.title()}: ID {ch_id} — {fee}")
+    ota_section = "\n".join(ota_lines) if ota_lines else "- No OTA channel data synced"
+
+    # Fees section
+    fees_section = f"- Cleaning Fee: ${cleaning_fee:.0f}" if cleaning_fee else "- Cleaning fee: not synced"
+
+    # Reviews section
+    if ha_reviews:
+        review_lines = []
+        for r in ha_reviews:
+            rating = f"⭐ {r['rating']}/5" if r.get("rating") else ""
+            ch = r.get("channel", "").title()
+            dt = r.get("date", "")
+            comment = r.get("comment") or "No comment"
+            review_lines.append(f"**{ch} {dt} {rating}**\n  _{comment}_")
+        reviews_section = "\n\n".join(review_lines)
+    else:
+        reviews_section = "_No reviews synced from Hostaway yet. Run Sync to pull recent reviews._"
+
     return f"""
 ## Listing Optimizer
 
 **Evidence-Based Quality Score:** {score_note}
-
-### Top Fixes
-1. Review titles for mobile readability and make sure the strongest differentiator appears in the first 35 characters.
-2. Audit cover image and first 8 photos manually; synced data only confirms photo counts, not visual quality.
-3. Verify amenities and full description in Hostaway before scoring those sections.
 
 ## Title Optimization
 
@@ -2526,27 +2591,30 @@ def _local_listing_optimizer_report(prop: Property, error: Exception | None = No
 - VRBO: Use a slightly fuller title under 70 characters with bedroom count and primary amenity.
 
 ## Photo And Visual Check
-- Airbnb photos: {airbnb_photos} ({ll.airbnb_photo_grade if ll else "unknown"})
-- VRBO photos: {vrbo_photos} ({ll.vrbo_photo_grade if ll else "unknown"})
+- Airbnb photos: {airbnb_photos} ({ll.airbnb_photo_grade if ll else "not synced"})
+- VRBO photos: {vrbo_photos} ({ll.vrbo_photo_grade if ll else "not synced"})
 
 Manual check: cover image, first 8 photo order, bedroom/bath coverage, hot tub/view/game-room proof, and thumbnail crop.
 
 ## Reviews And Trust
-- Airbnb: {airbnb_rating} - {ll.airbnb_rating_status if ll else "unknown"}
-- VRBO: {vrbo_rating} - {ll.vrbo_rating_status if ll else "unknown"}
+- Airbnb: {airbnb_rating}
+- VRBO: {vrbo_rating}
+
+### Recent Guest Reviews (from Hostaway)
+{reviews_section}
+
+## OTA Channels & Fees
+{ota_section}
+
+### Property Fees
+{fees_section}
 
 ## Positioning
 - Group: {_group_label(prop)}
 - Bedrooms: {prop.bedrooms}
+- Guest Capacity: {ha.get('personCapacity', 'not synced')}
+- Bathrooms: {ha.get('bathroomsNumber', 'not synced')}
 - Inferred segment: {"families / groups" if prop.bedrooms >= 3 else "couples / small groups"}
-
-## Manual Review Needed
-- full description
-- amenities
-- cover image quality
-- photo order
-- guest favorite / badge status
-- platform consistency
 
 {f"## Hostaway Listing Details{chr(10)}{ha_ctx}" if ha_ctx else ""}
 
@@ -2556,7 +2624,7 @@ Manual check: cover image, first 8 photo order, bedroom/bath coverage, hot tub/v
 3. Check whether the first photo sells the main reason to book.
 4. Verify amenity filters that affect search conversion.
 5. Confirm bedroom/bath count and sleeping setup consistency.
-6. Add missing quality notes back into Hostaway or the listing map export.
+6. Review recent guest feedback above and address recurring complaints.
 {ai_note}
 """.strip()
 

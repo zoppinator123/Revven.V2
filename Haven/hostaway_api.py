@@ -67,6 +67,38 @@ class HostawayClient:
         result = self._request("GET", f"listings/calendar?{query}")
         return result if isinstance(result, list) else []
 
+    def reviews(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+        query = parse.urlencode({"limit": limit, "offset": offset, "sortOrder": "date desc"})
+        result = self._request("GET", f"reviews?{query}")
+        return result if isinstance(result, list) else []
+
+    def reviews_by_listing(self, limit_per_listing: int = 5) -> dict[str, list[dict]]:
+        """Return {listingMapId: [recent reviews]} for all listings."""
+        reviews: dict[str, list] = {}
+        offset = 0
+        while True:
+            batch = self.reviews(limit=500, offset=offset)
+            if not batch:
+                break
+            for r in batch:
+                lid = str(r.get("listingMapId") or r.get("listingId") or "")
+                if not lid:
+                    continue
+                if lid not in reviews:
+                    reviews[lid] = []
+                if len(reviews[lid]) < limit_per_listing:
+                    reviews[lid].append({
+                        "date": (r.get("date") or r.get("createdAt") or "")[:10],
+                        "rating": r.get("rating") or r.get("reviewScore"),
+                        "comment": str(r.get("publicReview") or r.get("comment") or r.get("guestComment") or "").strip()[:300],
+                        "channel": str(r.get("channelName") or r.get("source") or "").lower(),
+                        "guest": str(r.get("guestName") or "Guest").strip(),
+                    })
+            if len(batch) < 500:
+                break
+            offset += 500
+        return reviews
+
     def reservations(self, limit: int = 500, offset: int = 0, sort_order: str = "lastUpdatedOn desc") -> list[dict[str, Any]]:
         query = parse.urlencode({"limit": limit, "offset": offset, "sortOrder": sort_order})
         result = self._request("GET", f"reservations?{query}")
