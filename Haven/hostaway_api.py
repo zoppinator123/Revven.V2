@@ -101,6 +101,64 @@ class HostawayClient:
         return result if isinstance(result, dict) else {"result": result}
 
 
+    def reservation_stats_by_listing(self, days_back: int = 180) -> dict[str, dict]:
+        """Return per-listing reservation stats: avg lead time, avg LOS, source breakdown, total nights."""
+        from datetime import date, timedelta
+        cutoff = (date.today() - timedelta(days=days_back)).isoformat()
+        stats: dict[str, dict] = {}
+        offset = 0
+        while True:
+            batch = self.reservations(limit=500, offset=offset, sort_order="arrivalDate desc")
+            if not batch:
+                break
+            older = 0
+            for r in batch:
+                arrival = (r.get("arrivalDate") or r.get("checkIn") or "")[:10]
+                if arrival and arrival < cutoff:
+                    older += 1
+                    continue
+                lid = str(r.get("listingMapId") or r.get("listingId") or "")
+                if not lid:
+                    continue
+                if lid not in stats:
+                    stats[lid] = {"lead_times": [], "los": [], "sources": {}, "total_nights": 0, "last_booked": ""}
+                s = stats[lid]
+                booked_date = (r.get("createdAt") or r.get("bookingDate") or "")[:10]
+                if booked_date and (not s["last_booked"] or booked_date > s["last_booked"]):
+                    s["last_booked"] = booked_date
+                if arrival and booked_date:
+                    try:
+                        lead = (date.fromisoformat(arrival) - date.fromisoformat(booked_date)).days
+                        if 0 <= lead <= 730:
+                            s["lead_times"].append(lead)
+                    except (ValueError, TypeError):
+                        pass
+                departure = (r.get("departureDate") or r.get("checkOut") or "")[:10]
+                if arrival and departure:
+                    try:
+                        nights = (date.fromisoformat(departure) - date.fromisoformat(arrival)).days
+                        if 0 < nights <= 90:
+                            s["los"].append(nights)
+                            s["total_nights"] += nights
+                    except (ValueError, TypeError):
+                        pass
+                source = str(r.get("source") or r.get("channelName") or r.get("channel") or "unknown").lower()
+                s["sources"][source] = s["sources"].get(source, 0) + 1
+            if len(batch) < 500 or older > 50:
+                break
+            offset += 500
+        result = {}
+        for lid, s in stats.items():
+            result[lid] = {
+                "avg_lead_days": round(sum(s["lead_times"]) / len(s["lead_times"])) if s["lead_times"] else None,
+                "avg_los": round(sum(s["los"]) / len(s["los"]), 1) if s["los"] else None,
+                "total_nights": s["total_nights"],
+                "sources": s["sources"],
+                "last_booked": s["last_booked"],
+            }
+        return result
+
+
 def client_from_env() -> HostawayClient:
     token = os.environ.get("HOSTAWAY_API_TOKEN")
     if not token:

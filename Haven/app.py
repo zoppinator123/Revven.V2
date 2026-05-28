@@ -55,6 +55,7 @@ BOOKING_PROMOTIONS_PATH = Path(__file__).parent / "booking_promotion_lab.json"
 MONTHLY_PACING_PATH = Path(__file__).parent / "pricelabs_report_builder_monthly.csv"
 PRICELABS_API_SNAPSHOT_PATH = Path(__file__).parent / "pricelabs_api_snapshot.json"
 LISTING_QUALITY_RULES_PATH = Path(__file__).parent / "listing_quality_rules.md"
+HOSTAWAY_ENRICHMENT_PATH = Path(__file__).parent / "hostaway_enrichment.json"
 ACTION_REPEAT_COOLDOWN_DAYS = 14
 _portfolio_lock = threading.Lock()
 
@@ -1846,6 +1847,77 @@ def _write_pricelabs_api_portfolio(listings: list[dict], ha_last_booked: dict | 
     return {"total": len(rows), "active": len(active_rows), "path": str(CSV_PATH)}
 
 
+def _sync_hostaway_enrichment() -> dict[str, Any]:
+    """Fetch Hostaway listings + reservation stats and cache to disk."""
+    try:
+        client = hostaway_client_from_env()
+        listings = client.listings(limit=500)
+        listing_map = {str(l.get("id") or l.get("listingMapId", "")): l for l in listings if l}
+        stats = client.reservation_stats_by_listing(days_back=180)
+        enrichment = {"listings": listing_map, "reservation_stats": stats}
+        HOSTAWAY_ENRICHMENT_PATH.write_text(json.dumps(enrichment, indent=2), encoding="utf-8")
+        return enrichment
+    except (HostawayAPIError, Exception):
+        if HOSTAWAY_ENRICHMENT_PATH.exists():
+            try:
+                return json.loads(HOSTAWAY_ENRICHMENT_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {}
+
+
+def _load_hostaway_enrichment() -> dict[str, Any]:
+    if HOSTAWAY_ENRICHMENT_PATH.exists():
+        try:
+            return json.loads(HOSTAWAY_ENRICHMENT_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _hostaway_context(prop: Property) -> str:
+    """Return formatted Hostaway enrichment context for a property."""
+    enrichment = _load_hostaway_enrichment()
+    if not enrichment:
+        return ""
+    listing_map = enrichment.get("listings", {})
+    stats_map = enrichment.get("reservation_stats", {})
+    lid = str(prop.listing_id or "").strip()
+    ha = listing_map.get(lid) or {}
+    stats = stats_map.get(lid) or {}
+    if not ha and not stats:
+        return ""
+    lines = ["Hostaway Listing Data:"]
+    if ha.get("personCapacity"):
+        lines.append(f"  Guest Capacity: {ha['personCapacity']}")
+    if ha.get("bathroomsNumber"):
+        lines.append(f"  Bathrooms: {ha['bathroomsNumber']}")
+    if ha.get("checkInTimeStart") or ha.get("checkOutTime"):
+        lines.append(f"  Check-in: {ha.get('checkInTimeStart', 'unknown')}  |  Check-out: {ha.get('checkOutTime', 'unknown')}")
+    amenities = ha.get("amenities") or []
+    if isinstance(amenities, list) and amenities:
+        lines.append(f"  Amenities ({len(amenities)} total): {', '.join(str(a) for a in amenities[:20])}")
+    desc = str(ha.get("description") or "").strip()
+    if desc:
+        lines.append(f"  Description (first 300 chars): {desc[:300]}")
+    rules = str(ha.get("houseRules") or "").strip()
+    if rules:
+        lines.append(f"  House Rules (first 200 chars): {rules[:200]}")
+    if stats:
+        lines.append("Hostaway Reservation Stats (last 180 days):")
+        if stats.get("avg_lead_days") is not None:
+            lines.append(f"  Avg booking lead time: {stats['avg_lead_days']} days")
+        if stats.get("avg_los") is not None:
+            lines.append(f"  Avg length of stay: {stats['avg_los']} nights")
+        if stats.get("total_nights"):
+            lines.append(f"  Total nights booked: {stats['total_nights']}")
+        sources = stats.get("sources") or {}
+        if sources:
+            top = sorted(sources.items(), key=lambda x: x[1], reverse=True)[:5]
+            lines.append(f"  Booking sources: {', '.join(f'{s}={n}' for s, n in top)}")
+    return "\n".join(lines)
+
+
 def _sync_pricelabs_api() -> dict:
     response = client_from_env().request("GET", "/listings")
     listings = response.get("listings") if isinstance(response, dict) else response
@@ -1853,11 +1925,13 @@ def _sync_pricelabs_api() -> dict:
         raise PriceLabsAPIError("PriceLabs /listings did not return a listings array.")
     PRICELABS_API_SNAPSHOT_PATH.write_text(json.dumps(response, indent=2), encoding="utf-8")
     try:
-        ha_last_booked = hostaway_client_from_env().last_booked_by_listing()
+        ha_client = hostaway_client_from_env()
+        ha_last_booked = ha_client.last_booked_by_listing()
     except (HostawayAPIError, Exception):
         ha_last_booked = {}
     written = _write_pricelabs_api_portfolio(listings, ha_last_booked)
     _reload_portfolio()
+    _sync_hostaway_enrichment()
     return {
         "source": "PriceLabs Customer API /listings",
         "listings_total": written["total"],
@@ -2094,6 +2168,8 @@ Occupancy & Booking Data:
 
 Important data quality note:
 If a setting says "unknown", do not infer or invent it. Treat PriceLabs as the pricing source.
+
+{_hostaway_context(prop)}
 """.strip()
 
 
@@ -2404,6 +2480,7 @@ def _local_listing_optimizer_report(prop: Property, error: Exception | None = No
     airbnb_rating = _format_rating(ll.airbnb_rating, ll.airbnb_reviews) if ll else "unknown"
     vrbo_rating = _format_rating(ll.vrbo_rating, ll.vrbo_reviews) if ll else "unknown"
     airbnb_photos = _format_count(ll.airbnb_photos) if ll else "unknown"
+    ha_ctx = _hostaway_context(prop)
     vrbo_photos = _format_count(ll.vrbo_photos) if ll else "unknown"
     evidence = []
     if ll and (ll.airbnb_headline or ll.vrbo_headline):
@@ -2456,6 +2533,8 @@ Manual check: cover image, first 8 photo order, bedroom/bath coverage, hot tub/v
 - photo order
 - guest favorite / badge status
 - platform consistency
+
+{f"## Hostaway Listing Details{chr(10)}{ha_ctx}" if ha_ctx else ""}
 
 ## Action Checklist
 1. Open Airbnb, VRBO, and Booking.com links from the dashboard.
