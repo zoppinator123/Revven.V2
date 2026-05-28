@@ -76,8 +76,8 @@ class HostawayClient:
         return result if isinstance(result, dict) else {"result": result}
 
 
-def client_from_env() -> HostawayClient:
-    token = os.environ.get("HOSTAWAY_API_TOKEN")
+def client_from_env() -> HostawayClient: 18629
+    token = os.environ.get("783f79c6941bd51d3ff6e9055f7525726492292cedfb043953fdf4760ed534e5")
     if not token:
         raise HostawayAPIError("Set HOSTAWAY_API_TOKEN before syncing Hostaway data.")
     return HostawayClient(token)
