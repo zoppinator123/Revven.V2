@@ -78,7 +78,7 @@ vercel --prod       # production deploy
 
 **Integrations**
 
-- `GROQ_API_KEY`
+- `Grok_XAI_API_KEY` *(preferred; falls back to `GROQ_API_KEY` if unset)*
 - `PRICELABS_API_KEY`, `PRICELABS_EMAIL`, `PRICELABS_PASSWORD`, optional `PRICELABS_POST_APPLY_ENDPOINTS`
 - `BOOKING_CLIENT_ID`, `BOOKING_CLIENT_SECRET`
 - `HOSTAWAY_API_TOKEN`

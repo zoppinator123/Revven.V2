@@ -36,7 +36,7 @@ def _load_dotenv(path: Path) -> None:
 _load_dotenv(Path(__file__).parent / ".env")
 
 sys.path.insert(0, ".")
-from dashboard_analysis import GROQ_FALLBACKS, _groq_client
+from dashboard_analysis import AI_API_KEY_ENV_VARS, GROQ_FALLBACKS, _get_ai_api_key, _groq_client
 from wheelhouse_portfolio import load_portfolio, portfolio_summary, Property
 from marketing_links import lookup as lookup_links, get_links
 from pricelabs_api import PriceLabsAPIError, client_from_env
@@ -3421,8 +3421,11 @@ def stream_report():
 
 
 if __name__ == "__main__":
-    if not os.environ.get("GROQ_API_KEY"):
-        print("WARNING: GROQ_API_KEY is not set. Dashboard will run, but AI reports use fallback/error handling.", file=sys.stderr)
+    if not _get_ai_api_key():
+        print(
+            f"WARNING: none of {', '.join(AI_API_KEY_ENV_VARS)} are set. Dashboard will run, but AI reports use fallback/error handling.",
+            file=sys.stderr,
+        )
     active_count = _SUMMARY["total_active"]
     critical_count = _SUMMARY["critical_count"]
     print(f"Starting STR Portfolio Dashboard at http://localhost:8080")

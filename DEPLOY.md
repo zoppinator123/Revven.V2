@@ -46,7 +46,7 @@ Add all variables from `.env.example` under **Project Settings → Environment V
 | `SUPABASE_ANON_KEY`         | All                   | Safe for SSR; do not expose to untrusted browsers    |
 | `SUPABASE_SERVICE_ROLE_KEY` | Production / Preview  | **Server-only.** Bypasses RLS — never expose to UI   |
 
-**Integration keys:** `GROQ_API_KEY`, `PRICELABS_API_KEY`, `PRICELABS_EMAIL`, `PRICELABS_PASSWORD`, `PRICELABS_POST_APPLY_ENDPOINTS` (optional), `BOOKING_CLIENT_ID`, `BOOKING_CLIENT_SECRET`, `HOSTAWAY_API_TOKEN`, `WHEELHOUSE_API_KEY` (optional).
+**Integration keys:** `Grok_XAI_API_KEY` (legacy fallback: `GROQ_API_KEY`), `PRICELABS_API_KEY`, `PRICELABS_EMAIL`, `PRICELABS_PASSWORD`, `PRICELABS_POST_APPLY_ENDPOINTS` (optional), `BOOKING_CLIENT_ID`, `BOOKING_CLIENT_SECRET`, `HOSTAWAY_API_TOKEN`, `WHEELHOUSE_API_KEY` (optional).
 
 ## 4. Deploy
 
@@ -61,7 +61,7 @@ After the deploy finishes:
 
 - Hit the production URL — the dashboard index should render.
 - Confirm in Vercel logs that the Flask app booted without `KeyError` on env vars.
-- Check that Groq-streamed analyses succeed (requires `GROQ_API_KEY`).
+- Check that AI-streamed analyses succeed (requires `Grok_XAI_API_KEY`, or legacy `GROQ_API_KEY`).
 - Hit `/api/healthz/db` — expect `{"ok": true, "configured": true, "schema": "revven", ...}` when Supabase is wired correctly. A 503 with `configured: false` means `SUPABASE_SERVICE_ROLE_KEY` is missing; a 503 with `configured: true` indicates the `revven.healthz` query failed (check the returned `error` field).
 
 ## Known limitations & gotchas

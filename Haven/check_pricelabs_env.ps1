@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $required = @("PRICELABS_API_KEY")
-$optional = @("PRICELABS_EMAIL", "PRICELABS_PASSWORD", "GROQ_API_KEY")
+$optional = @("PRICELABS_EMAIL", "PRICELABS_PASSWORD", "Grok_XAI_API_KEY", "GROQ_API_KEY")
 
 Write-Host ""
 Write-Host "Environment check"

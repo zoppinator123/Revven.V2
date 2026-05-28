@@ -8,7 +8,7 @@ This client version focuses on PriceLabs for revenue-management pricing decision
 
 ```bash
 cd /path/to/MPP
-export GROQ_API_KEY="your_groq_api_key_here"
+export Grok_XAI_API_KEY="your_api_key_here"   # legacy fallback: GROQ_API_KEY
 export PRICELABS_API_KEY="your_pricelabs_customer_api_key"
 export PRICELABS_EMAIL="your_pricelabs_email"
 export PRICELABS_PASSWORD="your_pricelabs_password"

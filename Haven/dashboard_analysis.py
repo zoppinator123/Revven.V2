@@ -591,8 +591,25 @@ def _build_groq_tools() -> list[dict]:
 GROQ_TOOLS = _build_groq_tools()
 
 
+# Primary env var: Grok_XAI_API_KEY (Vercel). Fallback: GROQ_API_KEY (legacy / local).
+AI_API_KEY_ENV_VARS = ("Grok_XAI_API_KEY", "GROQ_API_KEY")
+
+
+def _get_ai_api_key() -> str | None:
+    for name in AI_API_KEY_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
 def _groq_client() -> Groq:
-    return Groq(api_key=os.environ["GROQ_API_KEY"])
+    api_key = _get_ai_api_key()
+    if not api_key:
+        raise RuntimeError(
+            f"Set one of {', '.join(AI_API_KEY_ENV_VARS)} before invoking the AI client."
+        )
+    return Groq(api_key=api_key)
 
 
 def run_revenue_audit(user_prompt: str, verbose: bool = True) -> str:
@@ -685,8 +702,11 @@ QUESTION_PROMPT_TEMPLATE = "Property: selected HVR Smokies vacation rental. Toda
 
 
 def main():
-    if not os.environ.get("GROQ_API_KEY"):
-        print("ERROR: GROQ_API_KEY environment variable is not set.", file=sys.stderr)
+    if not _get_ai_api_key():
+        print(
+            f"ERROR: none of {', '.join(AI_API_KEY_ENV_VARS)} environment variables are set.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if len(sys.argv) > 1:
