@@ -1733,6 +1733,16 @@ def _api_bool(value: object) -> str:
     return "TRUE" if bool(value) else "FALSE"
 
 
+def _api_numeric(value: object) -> str:
+    """Return numeric string or empty string — strips non-numeric values like 'Unavailable'."""
+    text = str(value or "").strip()
+    try:
+        float(text)
+        return text
+    except (ValueError, TypeError):
+        return ""
+
+
 def _api_channel_tags(item: dict) -> str:
     parts = []
     for channel in item.get("channel_listing_details") or []:
@@ -1821,7 +1831,7 @@ def _write_pricelabs_api_portfolio(listings: list[dict], ha_last_booked: dict | 
             "available" if push_enabled and not hidden else "hidden",
             item.get("pms", ""),
             item.get("base", ""),
-            item.get("recommended_base_price", ""),
+            _api_numeric(item.get("recommended_base_price", "")),
             item.get("min", ""),
             item.get("max", ""),
             item.get("no_of_bedrooms", ""),
