@@ -1781,8 +1781,11 @@ def _derive_last_booked_date(item: dict, ha_last_booked: dict | None = None) -> 
     # 3. Estimate from booking pickup windows
     today = date.today()
     for days in (3, 7, 15):
-        if int(item.get(f"booking_pickup_unique_past_{days}") or 0) > 0:
-            return (today - timedelta(days=days)).strftime("%d %b %Y")
+        try:
+            if int(item.get(f"booking_pickup_unique_past_{days}") or 0) > 0:
+                return (today - timedelta(days=days)).strftime("%d %b %Y")
+        except (ValueError, TypeError):
+            pass
     return ""
 
 
