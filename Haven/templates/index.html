@@ -6,6 +6,7 @@
   <title>HVR Smokies Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
     /* Markdown prose */
     .prose h1, .prose h2, .prose h3 { font-weight: 700; margin-top: 1.25em; margin-bottom: 0.5em; color: #1e293b; }
@@ -131,19 +132,23 @@
 <div class="flex h-full">
 
   <!-- ── Sidebar: Property List ─────────────────────────────────────────── -->
-  <aside class="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0">
+  <aside class="w-72 bg-gray-950 text-white flex flex-col shrink-0">
 
-    <!-- Portfolio header -->
-    <div class="px-4 py-3 border-b border-slate-100 shrink-0">
-      <div class="flex items-center gap-2 mb-2">
-        <span class="text-xs font-bold text-indigo-600">HVR</span>
+    <!-- Logo / workspace header -->
+    <div class="px-4 py-4 border-b border-gray-800 shrink-0">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center shrink-0">
+          <span class="text-white font-bold text-sm">R</span>
+        </div>
         <div>
-          <div class="font-bold text-sm text-slate-900 leading-tight">HVR Smokies</div>
-          <div class="text-xs text-slate-400">{{ summary.total_active }} active properties - {{ today }}</div>
+          <div class="font-bold text-sm text-white leading-tight">Revven</div>
+          <div class="text-xs text-gray-400">HVR Smokies workspace</div>
         </div>
       </div>
+      <!-- Property count / date -->
+      <div class="text-xs text-gray-500 mb-3">{{ summary.total_active }} active properties &mdash; {{ today }}</div>
       <!-- Summary pills -->
-      <div class="summary-grid mb-2">
+      <div class="summary-grid mb-3">
         <span class="summary-pill critical">
           <span class="count">{{ summary.critical_count }}</span>
           <span class="label">Critical</span>
@@ -163,7 +168,7 @@
       </div>
       <!-- Search -->
       <input id="search-input" type="text" placeholder="Search properties..."
-        class="w-full text-xs border border-slate-200 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-300 bg-slate-50"
+        class="w-full text-xs border border-gray-700 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-800 text-gray-200 placeholder-gray-500"
         oninput="filterList()" />
       <!-- Filter chips -->
       <div class="filter-grid mt-2">
@@ -176,33 +181,33 @@
       </div>
     </div>
 
-    <!-- Portfolio overview button -->
-    <div class="px-3 py-2 border-b border-slate-100 shrink-0">
+    <!-- Nav buttons -->
+    <div class="px-3 py-2 border-b border-gray-800 shrink-0">
       <button onclick="selectPortfolio()"
         id="portfolio-btn"
-        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100">
+        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white transition-colors mt-1">
         Portfolio Overview
       </button>
       <button onclick="selectBookingPromos()"
         id="booking-promos-btn"
-        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2">
+        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:bg-gray-800 hover:text-white transition-colors mt-1">
         Booking Promo Lab
       </button>
       <button onclick="selectMonthlyPacing()"
         id="monthly-pacing-btn"
-        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2">
+        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:bg-gray-800 hover:text-white transition-colors mt-1">
         Monthly Pacing
       </button>
     </div>
 
     <!-- Property list -->
     <div id="property-list" class="flex-1 overflow-y-auto py-1">
-      <div class="text-center text-slate-400 text-xs py-4">Loading...</div>
+      <div class="text-center text-gray-500 text-xs py-4">Loading...</div>
     </div>
 
     <!-- Footer / CSV refresh -->
-    <div class="px-3 py-2 border-t border-slate-100 shrink-0">
-      <div class="text-xs text-slate-400 mb-1.5 flex items-center gap-1.5">
+    <div class="px-3 py-2 border-t border-gray-800 shrink-0">
+      <div class="text-xs text-gray-500 mb-1.5 flex items-center gap-1.5">
         <span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
         Web Dashboard - Groq Analysis
       </div>
@@ -211,12 +216,12 @@
         class="w-full text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1.5 mb-2">
         <span id="sync-icon">Sync</span> PriceLabs Now
       </button>
-      <div id="sync-status" class="text-xs text-slate-400 mb-2 hidden"></div>
+      <div id="sync-status" class="text-xs text-gray-500 mb-2 hidden"></div>
 
       <!-- Manual CSV drop -->
-      <div id="upload-area" class="border border-dashed border-slate-200 rounded-lg p-2 text-center cursor-pointer hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+      <div id="upload-area" class="border border-dashed border-gray-700 rounded-lg p-2 text-center cursor-pointer hover:border-indigo-500 hover:bg-gray-800 transition-colors"
            onclick="document.getElementById('csv-file-input').click()">
-        <div class="text-xs text-slate-400">Drop CSV to refresh manually</div>
+        <div class="text-xs text-gray-500">Drop CSV to refresh manually</div>
       </div>
       <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="uploadCSV(this)" />
       <div id="upload-status" class="text-xs mt-1 hidden"></div>
@@ -261,49 +266,160 @@
     <!-- Scrollable body -->
     <div class="flex-1 overflow-y-auto p-5">
 
-      <!-- Portfolio summary cards (shown on portfolio view) -->
-      <div id="portfolio-cards" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 mb-4 hidden">
-        <div class="mini-stat critical">
-          <div class="text-xs text-slate-500 mb-0.5">Critical</div>
-          <div class="text-xl font-bold text-red-600" id="card-critical">{{ summary.critical_count }}</div>
-          <div class="text-xs text-slate-400">properties</div>
+      <!-- ── Portfolio stat cards row ──────────────────────────────────────── -->
+      <div id="portfolio-cards" class="hidden">
+
+        <!-- 8-card stat grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-red-600" id="card-critical">{{ summary.critical_count }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">CRITICAL</div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-amber-500" id="card-warning">{{ summary.warning_count }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">WARNING</div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-sky-600">{{ summary.overperforming_count }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">FAST BOOKING</div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-green-600" id="card-ok">{{ summary.ok_count }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">OK</div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-purple-600">{{ summary.onboarding_count }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">NEW ONBOARDED</div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-slate-600">{{ summary.zero_bookings_14d }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">0 BKD/14D</div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-sky-600">{{ summary.avg_occ_60d }}%</div>
+            <div class="text-xs text-slate-500 mt-0.5">AVG OCC 60D</div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="text-2xl font-bold text-slate-600">{{ summary.occupancy_pacing_disabled }}</div>
+            <div class="text-xs text-slate-500 mt-0.5">PACING OFF</div>
+          </div>
         </div>
-        <div class="mini-stat warning">
-          <div class="text-xs text-slate-500 mb-0.5">Warning</div>
-          <div class="text-xl font-bold text-amber-600" id="card-warning">{{ summary.warning_count }}</div>
-          <div class="text-xs text-slate-400">properties</div>
+
+        <!-- 4 summary cards with sparklines -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <!-- Active Units -->
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Active Units</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">Live</span>
+            </div>
+            <div class="text-3xl font-bold text-slate-900 mb-2">{{ summary.total_active }}</div>
+            <svg viewBox="0 0 80 28" class="w-full h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polyline points="0,22 10,18 20,20 30,12 40,15 50,9 60,13 70,7 80,10"
+                stroke="#6366f1" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <!-- Adj. Paid Occ. -->
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Adj. Paid Occ.</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">60d</span>
+            </div>
+            <div class="text-3xl font-bold text-slate-900 mb-2">{{ summary.avg_occ_60d }}%</div>
+            <svg viewBox="0 0 80 28" class="w-full h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polyline points="0,20 10,16 20,18 30,10 40,13 50,8 60,11 70,6 80,9"
+                stroke="#6366f1" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <!-- ADR -->
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">ADR</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-medium">Avg</span>
+            </div>
+            <div class="text-3xl font-bold text-slate-900 mb-2">$235</div>
+            <svg viewBox="0 0 80 28" class="w-full h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polyline points="0,18 10,14 20,16 30,20 40,12 50,10 60,14 70,8 80,11"
+                stroke="#6366f1" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <!-- Adj. RevPAR -->
+          <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Adj. RevPAR</span>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">Avg</span>
+            </div>
+            <div class="text-3xl font-bold text-slate-900 mb-2">$152</div>
+            <svg viewBox="0 0 80 28" class="w-full h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polyline points="0,24 10,19 20,21 30,14 40,17 50,11 60,15 70,8 80,12"
+                stroke="#6366f1" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
         </div>
-        <div class="mini-stat overperforming">
-          <div class="text-xs text-slate-500 mb-0.5">Fast Booking</div>
-          <div class="text-xl font-bold text-sky-600">{{ summary.overperforming_count }}</div>
-          <div class="text-xs text-slate-400">review pricing</div>
+
+        <!-- Portfolio status bar chart -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-5">
+          <h3 class="text-sm font-semibold text-slate-700 mb-3">Portfolio Status Distribution</h3>
+          <div class="space-y-2">
+            {% set bar_max = [summary.critical_count, summary.warning_count, summary.onboarding_count, summary.overperforming_count, summary.ok_count] | max %}
+            {% set bar_max = [bar_max, 1] | max %}
+            <div class="flex items-center gap-3">
+              <span class="w-20 text-xs text-slate-500 text-right shrink-0">Critical</span>
+              <div class="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                <div class="h-4 bg-red-500 rounded-full transition-all" style="width: {{ ((summary.critical_count / bar_max) * 100) | round(1) }}%"></div>
+              </div>
+              <span class="w-8 text-xs font-semibold text-slate-700 shrink-0">{{ summary.critical_count }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="w-20 text-xs text-slate-500 text-right shrink-0">Warning</span>
+              <div class="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                <div class="h-4 bg-amber-400 rounded-full transition-all" style="width: {{ ((summary.warning_count / bar_max) * 100) | round(1) }}%"></div>
+              </div>
+              <span class="w-8 text-xs font-semibold text-slate-700 shrink-0">{{ summary.warning_count }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="w-20 text-xs text-slate-500 text-right shrink-0">New</span>
+              <div class="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                <div class="h-4 bg-slate-400 rounded-full transition-all" style="width: {{ ((summary.onboarding_count / bar_max) * 100) | round(1) }}%"></div>
+              </div>
+              <span class="w-8 text-xs font-semibold text-slate-700 shrink-0">{{ summary.onboarding_count }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="w-20 text-xs text-slate-500 text-right shrink-0">Fast</span>
+              <div class="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                <div class="h-4 bg-sky-500 rounded-full transition-all" style="width: {{ ((summary.overperforming_count / bar_max) * 100) | round(1) }}%"></div>
+              </div>
+              <span class="w-8 text-xs font-semibold text-slate-700 shrink-0">{{ summary.overperforming_count }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="w-20 text-xs text-slate-500 text-right shrink-0">OK</span>
+              <div class="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                <div class="h-4 bg-green-500 rounded-full transition-all" style="width: {{ ((summary.ok_count / bar_max) * 100) | round(1) }}%"></div>
+              </div>
+              <span class="w-8 text-xs font-semibold text-slate-700 shrink-0">{{ summary.ok_count }}</span>
+            </div>
+          </div>
         </div>
-        <div class="mini-stat onboarding">
-          <div class="text-xs text-slate-500 mb-0.5">New Onboarded</div>
-          <div class="text-xl font-bold text-purple-600">{{ summary.onboarding_count }}</div>
-          <div class="text-xs text-slate-400">listings</div>
+
+        <!-- Top movers / performers placeholder -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-5">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-700">Top Performers</h3>
+            <span class="text-xs text-slate-400 italic">Sync to load top movers</span>
+          </div>
+          <div class="space-y-2">
+            {% for i in range(1, 6) %}
+            <div class="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+              <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center shrink-0">{{ i }}</span>
+              <div class="flex-1 text-sm text-slate-400 italic">— awaiting sync —</div>
+              <div class="text-xs text-slate-300">0 bkd</div>
+              <div class="text-xs text-slate-300">—%</div>
+            </div>
+            {% endfor %}
+          </div>
         </div>
-        <div class="mini-stat ok">
-          <div class="text-xs text-slate-500 mb-0.5">OK</div>
-          <div class="text-xl font-bold text-green-600" id="card-ok">{{ summary.ok_count }}</div>
-          <div class="text-xs text-slate-400">properties</div>
-        </div>
-        <div class="mini-stat neutral">
-          <div class="text-xs text-slate-500 mb-0.5">0 Bkd / 14d</div>
-          <div class="text-xl font-bold text-slate-700">{{ summary.zero_bookings_14d }}</div>
-          <div class="text-xs text-slate-400">properties</div>
-        </div>
-        <div class="mini-stat neutral">
-          <div class="text-xs text-slate-500 mb-0.5">Avg Occ 60d</div>
-          <div class="text-xl font-bold text-slate-700">{{ summary.avg_occ_60d }}%</div>
-          <div class="text-xs text-slate-400">portfolio</div>
-        </div>
-        <div class="mini-stat neutral">
-          <div class="text-xs text-slate-500 mb-0.5">Pacing Off</div>
-          <div class="text-xl font-bold text-slate-700">{{ summary.occupancy_pacing_disabled }}</div>
-          <div class="text-xs text-slate-400">properties</div>
-        </div>
-      </div>
+
+      </div><!-- /portfolio-cards -->
 
       <div id="portfolio-dashboard" class="hidden space-y-5 mb-5"></div>
       <div id="action-queue" class="hidden mb-5"></div>
