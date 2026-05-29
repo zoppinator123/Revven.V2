@@ -88,6 +88,17 @@ def _classify(revenue_yoy: float | None, occ: float | None, occ_stly: float | No
     return ("monitor", "low", "Monitor", None)
 
 
+def _target_month_range(today: date) -> tuple[date, date, str]:
+    """Return (start, end, label) for the next calendar month."""
+    import calendar
+    year, month = (today.year, today.month + 1) if today.month < 12 else (today.year + 1, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    start = date(year, month, 1)
+    end = date(year, month, last_day)
+    label = start.strftime("%B %Y")
+    return start, end, label
+
+
 def _action_for_row(row: dict[str, str], prop: Any | None, today: date, report_label: str) -> dict[str, Any]:
     listing = _pick(row, ["Listing Name", "Listing", "Property", "Property Name"]) or (getattr(prop, "name", "") if prop else "Unknown")
     revenue = _parse_money(_pick(row, ["Rental Revenue", "Revenue"]))
@@ -102,35 +113,47 @@ def _action_for_row(row: dict[str, str], prop: Any | None, today: date, report_l
     signal, priority, title, pct = _classify(revenue_yoy, occ, occ_stly, occ_gap)
     base = float(getattr(prop, "base_price", 0) or 0)
     min_price = float(getattr(prop, "min_price", 0) or 0)
+
+    month_start, month_end, month_label = _target_month_range(today)
+    date_range_str = f"{month_start.strftime('%b %-d')}–{month_end.strftime('%-d, %Y')}"
+
     hit_floor = False
-    proposed_base = None
+    proposed_override = None
     if pct is not None and base > 0:
-        proposed_base = _round_to_5(base * (1 + pct))
-        if pct < 0 and min_price and proposed_base <= min_price < base:
-            proposed_base = _round_to_5(min_price)
+        proposed_override = _round_to_5(base * (1 + pct))
+        if pct < 0 and min_price and proposed_override <= min_price < base:
+            proposed_override = _round_to_5(min_price)
             hit_floor = True
 
     if signal in {"behind_both", "behind_occupancy"} and pct is not None:
-        suggestion = f"Review base price {pct:+.0%}" if not hit_floor else "Review minimum floor before cutting base"
-        adjustment = "Minimum floor check" if hit_floor else f"{pct:+.0%} base review"
-        proposed = f"Base {pct:+.0%} (est. {_money(proposed_base)})" if proposed_base else f"Base {pct:+.0%}"
-        implementation = "Approve first. If approved, review the base in PriceLabs; use date-specific overrides instead where only a few open dates are exposed."
-        payload_kind = "base_percentage_review" if prop and proposed_base and not hit_floor else "manual_review"
+        suggestion = f"Set monthly override for {month_label}: {pct:+.0%}" if not hit_floor else f"Review minimum floor before setting {month_label} override"
+        adjustment = "Minimum floor check" if hit_floor else f"{pct:+.0%} override · {month_label}"
+        proposed = f"Date override {pct:+.0%} (est. {_money(proposed_override)}) · {date_range_str}" if proposed_override else f"Date override {pct:+.0%} · {date_range_str}"
+        implementation = (
+            f"Approve first. In PriceLabs, open this listing's calendar, select all dates from "
+            f"{date_range_str}, and apply a {pct:+.0%} date-specific override — do not change the base price. "
+            f"This limits the discount to {month_label} only."
+        )
+        payload_kind = "monthly_date_override" if prop and proposed_override and not hit_floor else "manual_review"
     elif signal == "behind_revenue":
-        suggestion = "Investigate revenue gap before changing price"
-        adjustment = "No automatic decrease"
+        suggestion = "Investigate revenue gap before applying override"
+        adjustment = "No automatic override"
         proposed = "Check ADR, restrictions, channel mix, and open-date exposure"
-        implementation = "Revenue is behind, but occupancy is not weak enough for a broad base cut."
+        implementation = "Revenue is behind, but occupancy is not weak enough for a monthly override."
         payload_kind = "manual_review"
     elif signal == "overperforming" and pct is not None:
-        suggestion = f"Review base price {pct:+.0%}"
-        adjustment = f"{pct:+.0%} base review"
-        proposed = f"Base {pct:+.0%} (est. {_money(proposed_base)})" if proposed_base else f"Base {pct:+.0%}"
-        implementation = "Approve first. If approved, raise base conservatively and recheck pickup after 7 days."
-        payload_kind = "base_percentage_review" if prop and proposed_base else "manual_review"
+        suggestion = f"Set monthly override for {month_label}: {pct:+.0%}"
+        adjustment = f"{pct:+.0%} override · {month_label}"
+        proposed = f"Date override {pct:+.0%} (est. {_money(proposed_override)}) · {date_range_str}" if proposed_override else f"Date override {pct:+.0%} · {date_range_str}"
+        implementation = (
+            f"Approve first. In PriceLabs, open this listing's calendar, select all dates from "
+            f"{date_range_str}, and apply a {pct:+.0%} date-specific override — do not change the base price. "
+            f"Recheck pickup after 7 days."
+        )
+        payload_kind = "monthly_date_override" if prop and proposed_override else "manual_review"
     else:
         suggestion = "Monitor monthly pacing"
-        adjustment = "No automatic price change"
+        adjustment = "No override needed"
         proposed = "Keep current setup; watch revenue and paid occupancy next refresh"
         implementation = "No task unless the next report shows a larger revenue or occupancy gap."
         payload_kind = "manual_review"
@@ -159,7 +182,7 @@ def _action_for_row(row: dict[str, str], prop: Any | None, today: date, report_l
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "reviewed_at": None,
-        "target_dates": report_label,
+        "target_dates": f"{month_label} ({date_range_str})",
         "suggestion": suggestion,
         "current_value": f"Base {_money(base) if base else '-'}; revenue YoY {_pct(revenue_yoy, True)}; occ {_pct(occ)}",
         "proposed_value": proposed,
@@ -167,6 +190,9 @@ def _action_for_row(row: dict[str, str], prop: Any | None, today: date, report_l
         "reason": "; ".join(reason_bits),
         "implementation": implementation,
         "monthly_signal": signal,
+        "override_month": month_label,
+        "override_start": month_start.isoformat(),
+        "override_end": month_end.isoformat(),
         "monthly_metrics": {
             "rental_revenue": revenue,
             "rental_revenue_stly": revenue_stly,
@@ -180,8 +206,9 @@ def _action_for_row(row: dict[str, str], prop: Any | None, today: date, report_l
         "pricelabs_payload": {
             "kind": payload_kind,
             "adjustment_pct": pct,
-            "suggested_base_price": proposed_base,
-            "estimated_base_price": proposed_base,
+            "override_start": month_start.isoformat(),
+            "override_end": month_end.isoformat(),
+            "estimated_override_price": proposed_override,
         },
     }
     if payload_kind == "manual_review":

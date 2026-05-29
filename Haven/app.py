@@ -2341,8 +2341,8 @@ def _apply_weekly_action(action: dict) -> dict:
     if not listing_id or not pms_name:
         raise PricingApplyError("This action is missing the PriceLabs listing ID or PMS name. Regenerate weekly suggestions from the current PriceLabs export.")
 
-    start_text = payload.get("start_date")
-    end_text = payload.get("end_date") or start_text
+    start_text = payload.get("start_date") or payload.get("override_start")
+    end_text = payload.get("end_date") or payload.get("override_end") or start_text
     if not start_text:
         if kind not in {"base_percentage_review", "base_price_review"}:
             raise PricingApplyError(f"Unsupported PriceLabs action kind: {kind}.")
@@ -2405,7 +2405,7 @@ def _apply_weekly_action(action: dict) -> dict:
     day = adjusted_start
     while day <= end:
         item = {"date": day.isoformat()}
-        if kind == "custom_percentage_adjustment":
+        if kind in {"custom_percentage_adjustment", "monthly_date_override"}:
             pct = payload.get("adjustment_pct")
             if pct is None:
                 raise PricingApplyError("This percentage action is missing adjustment_pct.")
