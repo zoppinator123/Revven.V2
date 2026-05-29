@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
 """
 HVR Smokies Dashboard.
-Serves the HTML dashboard and streams Groq analysis via Server-Sent Events.
+Serves the HTML dashboard and streams xAI (Grok) analysis via Server-Sent Events.
 """
 
 import html as _html_lib
@@ -13,6 +13,8 @@ import sys
 import shutil
 import threading
 import uuid
+
+import requests
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -37,13 +39,23 @@ def _load_dotenv(path: Path) -> None:
 _load_dotenv(Path(__file__).parent / ".env")
 
 sys.path.insert(0, ".")
-from dashboard_analysis import GROQ_FALLBACKS, _groq_client
+from dashboard_analysis import (
+    AI_API_KEY_ENV_VARS,
+    AI_MODEL,
+    AI_MODEL_FALLBACKS,
+    GROQ_FALLBACKS,  # legacy alias, retained for any external import
+    _ai_client,
+    _get_ai_api_key,
+    _groq_client,    # legacy alias for _ai_client
+)
+from xai_client import APIStatusError as AIAPIStatusError, get_active_provider_info
 from wheelhouse_portfolio import load_portfolio, portfolio_summary, Property
 from marketing_links import lookup as lookup_links, get_links
 from pricelabs_api import PriceLabsAPIError, client_from_env
 from booking_api import BookingAPIError, build_promotion_xml, client_from_env as booking_client_from_env
 from hostaway_api import HostawayAPIError, client_from_env as hostaway_client_from_env
 from pricelabs_monthly_pacing import SOURCE as MONTHLY_PACING_SOURCE, load_monthly_pacing
+import supabase_store
 
 app = Flask(__name__)
 TODAY = date.today()
@@ -85,7 +97,7 @@ def _resolve_property(name: str) -> Property | None:
     return None
 
 
-def _load_actions() -> list[dict]:
+def _load_actions_from_json() -> list[dict]:
     if not ACTION_QUEUE_PATH.exists():
         return []
     try:
@@ -94,11 +106,38 @@ def _load_actions() -> list[dict]:
         return []
 
 
+def _save_actions_to_json(actions: list[dict]) -> None:
+    try:
+        ACTION_QUEUE_PATH.write_text(json.dumps(actions, indent=2), encoding="utf-8")
+    except OSError:
+        # Vercel filesystem is read-only outside /tmp; Supabase is the source of
+        # truth when configured, so swallow this and rely on the table.
+        pass
+
+
+def _load_actions() -> list[dict]:
+    if supabase_store.is_enabled():
+        remote = supabase_store.load_pricing_actions()
+        if remote is None:
+            return _load_actions_from_json()
+        if remote:
+            return remote
+        # Empty table on first read — backfill from the bundled JSON snapshot.
+        seed = _load_actions_from_json()
+        if seed and supabase_store.save_pricing_actions(seed):
+            return seed
+        return seed
+    return _load_actions_from_json()
+
+
 def _save_actions(actions: list[dict]) -> None:
-    ACTION_QUEUE_PATH.write_text(json.dumps(actions, indent=2), encoding="utf-8")
+    if supabase_store.is_enabled():
+        if supabase_store.save_pricing_actions(actions):
+            return
+    _save_actions_to_json(actions)
 
 
-def _load_booking_promotions() -> list[dict]:
+def _load_booking_promotions_from_json() -> list[dict]:
     if not BOOKING_PROMOTIONS_PATH.exists():
         return []
     try:
@@ -107,8 +146,32 @@ def _load_booking_promotions() -> list[dict]:
         return []
 
 
+def _save_booking_promotions_to_json(promotions: list[dict]) -> None:
+    try:
+        BOOKING_PROMOTIONS_PATH.write_text(json.dumps(promotions, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _load_booking_promotions() -> list[dict]:
+    if supabase_store.is_enabled():
+        remote = supabase_store.load_booking_promotions()
+        if remote is None:
+            return _load_booking_promotions_from_json()
+        if remote:
+            return remote
+        seed = _load_booking_promotions_from_json()
+        if seed and supabase_store.save_booking_promotions(seed):
+            return seed
+        return seed
+    return _load_booking_promotions_from_json()
+
+
 def _save_booking_promotions(promotions: list[dict]) -> None:
-    BOOKING_PROMOTIONS_PATH.write_text(json.dumps(promotions, indent=2), encoding="utf-8")
+    if supabase_store.is_enabled():
+        if supabase_store.save_booking_promotions(promotions):
+            return
+    _save_booking_promotions_to_json(promotions)
 
 
 def _listing_quality_rules() -> str:
@@ -1668,9 +1731,9 @@ Rules:
 - If Booking.com ID is missing, say it cannot be pushed by API yet.
 """.strip()
     try:
-        client = _groq_client()
+        client = _ai_client()
         response = client.chat.completions.create(
-            model=GROQ_FALLBACKS[0],
+            model=AI_MODEL,
             messages=[
                 {"role": "system", "content": "You are an STR revenue manager reviewing Booking.com promotions. Be concise, numeric, and cautious about discount stacking."},
                 {"role": "user", "content": prompt},
@@ -1725,13 +1788,13 @@ def _benchmark_for(prop: Property) -> dict:
     }
 
 
-def _reload_portfolio():
+def _reload_portfolio(csv_path: Path | None = None):
     """Reload portfolio data from CSV — called after a hot-reload upload."""
     global _PORTFOLIO, _PORTFOLIO_INDEX, _SUMMARY
     import marketing_links as _ml
     _ml._LINKS = None          # bust marketing links cache
     with _portfolio_lock:
-        _PORTFOLIO       = load_portfolio()
+        _PORTFOLIO       = load_portfolio(csv_path)
         _PORTFOLIO_INDEX = {p.name: p for p in _PORTFOLIO}
         _SUMMARY         = portfolio_summary(_PORTFOLIO)
     print(f"[reload] Portfolio reloaded — {_SUMMARY['total_active']} active, {_SUMMARY['critical_count']} critical")
@@ -1872,16 +1935,37 @@ def _write_pricelabs_api_portfolio(listings: list[dict], ha_last_booked: dict | 
             _derive_last_booked_date(item, ha_last_booked or {}),
         ])
 
-    with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(header)
-        writer.writerows(rows)
+    target_path = CSV_PATH
+    write_error: str | None = None
+    try:
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            writer.writerows(rows)
+    except OSError as exc:
+        # Vercel's bundled filesystem is read-only outside /tmp. Fall back to
+        # writing the regenerated CSV to /tmp so _reload_portfolio() still has
+        # fresh data; Supabase remains the durable copy.
+        fallback = Path("/tmp") / CSV_PATH.name
+        try:
+            with fallback.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                writer.writerows(rows)
+            target_path = fallback
+        except OSError as exc2:
+            write_error = f"{type(exc).__name__}: {exc}; fallback failed: {type(exc2).__name__}: {exc2}"
 
     active_rows = [
         row for row in rows
         if str(row[2]).upper() == "TRUE" and str(row[3]).upper() == "TRUE"
     ]
-    return {"total": len(rows), "active": len(active_rows), "path": str(CSV_PATH)}
+    return {
+        "total": len(rows),
+        "active": len(active_rows),
+        "path": str(target_path),
+        "write_error": write_error,
+    }
 
 
 def _sync_hostaway_enrichment() -> dict[str, Any]:
@@ -2006,6 +2090,8 @@ def _sync_pricelabs_api() -> dict:
         "listings_total": written["total"],
         "listings_active": written["active"],
         "snapshot": str(PRICELABS_API_SNAPSHOT_PATH),
+        "portfolio_csv": written.get("path"),
+        "csv_write_error": written.get("write_error"),
     }
 
 
@@ -3070,6 +3156,21 @@ def index():
     return render_template("index.html", summary=_SUMMARY, today=TODAY.isoformat())
 
 
+def _persist_upload(file_storage, local_path: Path, remote_name: str) -> None:
+    """Save an uploaded file locally (best-effort) and mirror to Supabase Storage.
+
+    The local write is wrapped in try/except so the read-only Vercel filesystem
+    does not break the request when Supabase Storage is the durable target.
+    """
+    body = file_storage.read()
+    try:
+        local_path.write_bytes(body)
+    except OSError:
+        pass
+    if supabase_store.is_enabled():
+        supabase_store.upload_csv(remote_name, body)
+
+
 @app.route("/api/reload", methods=["POST"])
 def reload_data():
     """
@@ -3082,19 +3183,19 @@ def reload_data():
     if "pricelabs_csv" in request.files or "wheelhouse_csv" in request.files:
         f = request.files.get("pricelabs_csv") or request.files["wheelhouse_csv"]
         if f.filename:
-            f.save(str(CSV_PATH))
+            _persist_upload(f, CSV_PATH, "pricelabs_portfolio.csv")
             updated.append("pricelabs")
 
     if "marketing_csv" in request.files:
         f = request.files["marketing_csv"]
         if f.filename:
-            f.save(str(MARKETING_PATH))
+            _persist_upload(f, MARKETING_PATH, "marketing_links.csv")
             updated.append("marketing")
 
     if "report_builder_csv" in request.files:
         f = request.files["report_builder_csv"]
         if f.filename:
-            f.save(str(MONTHLY_PACING_PATH))
+            _persist_upload(f, MONTHLY_PACING_PATH, "pricelabs_report_builder_monthly.csv")
             updated.append("report_builder")
 
     if updated:
@@ -3591,7 +3692,7 @@ def stream_report():
 
     def generate():
         try:
-            client = _groq_client()
+            client = _ai_client()
 
             SHORT_SYSTEM = (
                 "You are an expert STR revenue manager and listing optimizer for HVR Smokies vacation rentals. "
@@ -3611,10 +3712,7 @@ def stream_report():
 
             def call_with_fallback(msgs):
                 """Try each model in the cascade until one succeeds."""
-                from groq import APIStatusError
-                models = GROQ_FALLBACKS
-                if report_type == "listing":
-                    models = ["llama-3.3-70b-versatile"] + [m for m in GROQ_FALLBACKS if m != "llama-3.3-70b-versatile"]
+                models = AI_MODEL_FALLBACKS
                 for model in models:
                     try:
                         kwargs = dict(
@@ -3624,7 +3722,7 @@ def stream_report():
                             temperature=0.2 if report_type == "listing" else 0.4,
                         )
                         return client.chat.completions.create(**kwargs), model
-                    except APIStatusError as e:
+                    except AIAPIStatusError as e:
                         if e.status_code in (429, 413):
                             continue   # rate limit or too large — try next model
                         raise
@@ -3690,8 +3788,11 @@ def stream_report():
 
 
 if __name__ == "__main__":
-    if not os.environ.get("GROQ_API_KEY"):
-        print("WARNING: GROQ_API_KEY is not set. Dashboard will run, but AI reports use fallback/error handling.", file=sys.stderr)
+    if not _get_ai_api_key():
+        print(
+            f"WARNING: none of {', '.join(AI_API_KEY_ENV_VARS)} are set. Dashboard will run, but AI reports use fallback/error handling.",
+            file=sys.stderr,
+        )
     active_count = _SUMMARY["total_active"]
     critical_count = _SUMMARY["critical_count"]
     print(f"Starting STR Portfolio Dashboard at http://localhost:8080")
