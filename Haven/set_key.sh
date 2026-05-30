@@ -2,23 +2,23 @@
 # Run this once to save your Gemini API key.
 # Your key will NOT appear on screen as you type it.
 echo ""
-echo AIzaSyCTR9be4ukbsXAYrH-n-wbb1j6i5cxQd4w:"
+echo -n "Enter your GEMINI_API_KEY: "
 read -rs GEMINI_API_KEY
 echo ""
 
-if [ -z AIzaSyCTR9be4ukbsXAYrH-n-wbb1j6i5cxQd4w ]; then
+if [ -z "$GEMINI_API_KEY" ]; then
   echo "ERROR: No key entered."
   exit 1
 fi
 
-# Write to ~/.zshrc
-grep -v AIzaSyCTR9be4ukbsXAYrH-n-wbb1j6i5cxQd4w ~/.zshrc > /tmp/zshrc_tmp && mv /tmp/zshrc_tmp ~/.zshrc
-echo "export AIzaSyCTR9be4ukbsXAYrH-n-wbb1j6i5cxQd4w=\AIzaSyCTR9be4ukbsXAYrH-n-wbb1j6i5cxQd4w" >> ~/.zshrc
+# Write to ~/.zshrc (strip any prior GEMINI_API_KEY export first)
+grep -v 'export GEMINI_API_KEY=' ~/.zshrc > /tmp/zshrc_tmp && mv /tmp/zshrc_tmp ~/.zshrc
+echo "export GEMINI_API_KEY=\"$GEMINI_API_KEY\"" >> ~/.zshrc
 
 # Load immediately
-export GEMINI_API_KEY=AIzaSyCTR9be4ukbsXAYrH-n-wbb1j6i5cxQd4w
+export GEMINI_API_KEY="$GEMINI_API_KEY"
 
 echo "Key saved to ~/.zshrc and loaded into this session."
 echo "Key starts with: ${GEMINI_API_KEY:0:8}..."
 echo ""
-echo "Now run:  python3 /Users/noelineramos/Documents/MPP/app.py"
+echo "Now run:  python3 app.py"
