@@ -4,30 +4,192 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HVR Smokies Dashboard</title>
+
+  <!-- Apply saved theme before paint to avoid a flash of the wrong palette -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("havenTheme");
+        if (t === "dark") document.documentElement.classList.add("dark");
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- Fonts: Jost (geometric Futura-alike) for headings, Raleway for body -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Raleway:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Haven design tokens wired into Tailwind (CDN inline config). -->
+  <!-- The legacy `slate` and `indigo` palettes are remapped onto CSS-variable -->
+  <!-- driven scales so existing utility classes adopt the sage surfaces + -->
+  <!-- coral accent and respond to light/dark automatically. -->
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            background: "rgb(var(--background) / <alpha-value>)",
+            surface: "rgb(var(--surface) / <alpha-value>)",
+            "surface-alt": "rgb(var(--surface-alt) / <alpha-value>)",
+            muted: "rgb(var(--muted) / <alpha-value>)",
+            "muted-foreground": "rgb(var(--muted-foreground) / <alpha-value>)",
+            foreground: "rgb(var(--foreground) / <alpha-value>)",
+            "ink-alt": "rgb(var(--ink-alt) / <alpha-value>)",
+            accent: "rgb(var(--accent) / <alpha-value>)",
+            "accent-foreground": "rgb(var(--accent-foreground) / <alpha-value>)",
+            "accent-soft": "rgb(var(--accent-soft) / <alpha-value>)",
+            border: "rgb(var(--border) / <alpha-value>)",
+            ring: "rgb(var(--ring) / <alpha-value>)",
+            // Remap legacy slate -> sage scale (inverts in dark mode).
+            slate: {
+              50:  "rgb(var(--sg-50) / <alpha-value>)",
+              100: "rgb(var(--sg-100) / <alpha-value>)",
+              200: "rgb(var(--sg-200) / <alpha-value>)",
+              300: "rgb(var(--sg-300) / <alpha-value>)",
+              400: "rgb(var(--sg-400) / <alpha-value>)",
+              500: "rgb(var(--sg-500) / <alpha-value>)",
+              600: "rgb(var(--sg-600) / <alpha-value>)",
+              700: "rgb(var(--sg-700) / <alpha-value>)",
+              800: "rgb(var(--sg-800) / <alpha-value>)",
+              900: "rgb(var(--sg-900) / <alpha-value>)",
+            },
+            // Remap legacy indigo -> coral accent scale.
+            indigo: {
+              50:  "rgb(var(--co-50) / <alpha-value>)",
+              100: "rgb(var(--co-100) / <alpha-value>)",
+              400: "rgb(var(--co-400) / <alpha-value>)",
+              500: "rgb(var(--co-500) / <alpha-value>)",
+              600: "rgb(var(--co-600) / <alpha-value>)",
+              700: "rgb(var(--co-700) / <alpha-value>)",
+              800: "rgb(var(--co-800) / <alpha-value>)",
+            },
+          },
+          borderRadius: { card: "14px", pill: "30px" },
+          fontFamily: {
+            heading: ["Jost", "Futura", "sans-serif"],
+            body: ["Raleway", "sans-serif"],
+          },
+          boxShadow: { ring: "0 0 0 3px rgb(var(--ring) / 0.45)" },
+        },
+      },
+    };
+  </script>
   <style>
+    /* ── Haven design tokens ──────────────────────────────────────────── */
+    :root {
+      --background: 255 255 255; --surface: 255 255 255; --surface-alt: 237 240 238;
+      --muted: 241 243 242; --muted-foreground: 115 120 118;
+      --foreground: 66 66 66; --ink-alt: 51 51 51;
+      --accent: 255 86 78; --accent-foreground: 255 255 255; --accent-soft: 255 228 226;
+      --border: 226 228 226; --ring: 255 86 78;
+
+      /* Legacy `slate` remapped to a sage scale (light = low→light). */
+      --sg-50: 248 250 249;  --sg-100: 241 243 242; --sg-200: 226 228 226;
+      --sg-300: 214 218 215; --sg-400: 160 167 163; --sg-500: 115 120 118;
+      --sg-600: 90 96 92;    --sg-700: 66 66 66;    --sg-800: 51 51 51;
+      --sg-900: 33 35 34;
+
+      /* Legacy `indigo` remapped to a coral scale. */
+      --co-50: 255 235 233;  --co-100: 255 213 209; --co-400: 255 118 111;
+      --co-500: 255 100 92;  --co-600: 255 86 78;   --co-700: 226 70 62;
+      --co-800: 190 56 49;
+    }
+    .dark {
+      --background: 22 24 23; --surface: 28 31 30; --surface-alt: 36 40 38;
+      --muted: 40 44 42; --muted-foreground: 160 167 163;
+      --foreground: 237 240 238; --ink-alt: 200 205 202;
+      --accent: 255 118 111; --accent-foreground: 24 25 24; --accent-soft: 80 36 34;
+      --border: 50 54 52; --ring: 255 118 111;
+
+      /* Sage scale inverts so dark text becomes light, light bg becomes dark. */
+      --sg-50: 36 40 38;     --sg-100: 40 44 42;    --sg-200: 50 54 52;
+      --sg-300: 66 71 68;    --sg-400: 150 157 153; --sg-500: 170 177 173;
+      --sg-600: 195 201 197; --sg-700: 222 226 223; --sg-800: 237 240 238;
+      --sg-900: 245 247 246;
+
+      /* Coral scale: softer fills, brighter ink for dark surfaces. */
+      --co-50: 70 33 31;     --co-100: 96 42 39;    --co-400: 255 118 111;
+      --co-500: 255 132 125; --co-600: 255 118 111; --co-700: 255 150 144;
+      --co-800: 255 180 175;
+    }
+
+    * { border-color: rgb(var(--border)); }
+    html { -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: "Raleway", system-ui, sans-serif;
+      font-weight: 500; font-size: 15px;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-family: "Jost", Futura, sans-serif;
+      font-weight: 700; letter-spacing: -0.01em;
+    }
+
+    /* ── Shape: pill badges/buttons, card-radius panels ───────────────── */
+    button { border-radius: 9999px; }
+    .report-tab, .filter-chip, .tool-pill, .kd-pill { border-radius: 9999px; }
+    .kd-card, .mini-stat, .summary-pill { border-radius: 14px; }
+
+    /* ── Focus rings on every interactive element ─────────────────────── */
+    button:focus-visible, a:focus-visible, input:focus-visible,
+    [onclick]:focus-visible, .report-tab:focus-visible, .filter-chip:focus-visible,
+    .prop-item:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgb(var(--ring) / 0.45);
+    }
+
+    /* ── Reusable component classes (single source of truth) ──────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+      border-radius: 9999px; font-weight: 600; transition: all 0.12s; cursor: pointer;
+    }
+    .btn-accent { background: rgb(var(--accent)); color: rgb(var(--accent-foreground)); }
+    .btn-accent:hover { opacity: 0.9; }
+    .btn-ghost { background: transparent; color: rgb(var(--ink-alt)); }
+    .btn-ghost:hover { background: rgb(var(--muted)); }
+    .card {
+      background: rgb(var(--surface)); border: 1px solid rgb(var(--border));
+      border-radius: 14px;
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      border-radius: 9999px; padding: 0.15rem 0.6rem;
+      font-size: 0.7rem; font-weight: 600;
+      background: rgb(var(--accent-soft)); color: rgb(var(--accent));
+    }
+
+    /* ── Topographic texture for empty states ─────────────────────────── */
+    .haven-topo {
+      background-color: rgb(var(--surface));
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='%23ff564e' stroke-opacity='0.06' stroke-width='1.5'%3E%3Cpath d='M-20 120 Q60 60 120 120 T260 120'/%3E%3Cpath d='M-20 150 Q60 90 120 150 T260 150'/%3E%3Cpath d='M-20 180 Q60 120 120 180 T260 180'/%3E%3Cpath d='M-20 90 Q60 30 120 90 T260 90'/%3E%3Cpath d='M-20 60 Q60 0 120 60 T260 60'/%3E%3C/g%3E%3C/svg%3E");
+      background-size: 240px 240px;
+    }
+
     /* Markdown prose */
-    .prose h1, .prose h2, .prose h3 { font-weight: 700; margin-top: 1.25em; margin-bottom: 0.5em; color: #1e293b; }
+    .prose h1, .prose h2, .prose h3 { font-weight: 700; margin-top: 1.25em; margin-bottom: 0.5em; color: rgb(var(--foreground)); }
     .prose h1 { font-size: 1.3rem; }
-    .prose h2 { font-size: 1.1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3em; }
-    .prose h3 { font-size: 0.95rem; color: #334155; }
-    .prose p  { margin-bottom: 0.75em; line-height: 1.65; color: #334155; }
+    .prose h2 { font-size: 1.1rem; border-bottom: 1px solid rgb(var(--border)); padding-bottom: 0.3em; }
+    .prose h3 { font-size: 0.95rem; color: rgb(var(--ink-alt)); }
+    .prose p  { margin-bottom: 0.75em; line-height: 1.65; color: rgb(var(--ink-alt)); }
     .prose ul, .prose ol { margin: 0.5em 0 0.75em 1.5em; }
-    .prose li { margin-bottom: 0.3em; line-height: 1.6; color: #334155; }
+    .prose li { margin-bottom: 0.3em; line-height: 1.6; color: rgb(var(--ink-alt)); }
     .prose ul li { list-style-type: disc; }
     .prose ol li { list-style-type: decimal; }
-    .prose strong { font-weight: 700; color: #0f172a; }
+    .prose strong { font-weight: 700; color: rgb(var(--foreground)); }
     .prose em { font-style: italic; }
-    .prose code { background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.82em; color: #7c3aed; font-family: monospace; }
-    .prose blockquote { border-left: 3px solid #6366f1; padding-left: 1em; color: #475569; margin: 0.75em 0; font-style: italic; }
+    .prose code { background: rgb(var(--muted)); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.82em; color: rgb(var(--accent)); font-family: monospace; }
+    .prose blockquote { border-left: 3px solid rgb(var(--accent)); padding-left: 1em; color: rgb(var(--muted-foreground)); margin: 0.75em 0; font-style: italic; }
     .prose table { width: 100%; border-collapse: collapse; margin: 0.75em 0; font-size: 0.85rem; }
-    .prose th { background: #f8fafc; font-weight: 600; text-align: left; padding: 0.45em 0.7em; border: 1px solid #e2e8f0; color: #475569; }
-    .prose td { padding: 0.4em 0.7em; border: 1px solid #e2e8f0; }
-    .prose tr:nth-child(even) { background: #f8fafc; }
+    .prose th { background: rgb(var(--muted)); font-weight: 600; text-align: left; padding: 0.45em 0.7em; border: 1px solid rgb(var(--border)); color: rgb(var(--muted-foreground)); }
+    .prose td { padding: 0.4em 0.7em; border: 1px solid rgb(var(--border)); }
+    .prose tr:nth-child(even) { background: rgb(var(--muted)); }
 
     /* Streaming cursor */
-    .streaming::after { content: "|"; animation: blink 1s step-end infinite; color: #6366f1; }
+    .streaming::after { content: "|"; animation: blink 1s step-end infinite; color: rgb(var(--accent)); }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
     /* Spinner */
@@ -40,8 +202,8 @@
       padding: 0.45rem 0.75rem; border-radius: 0.4rem; cursor: pointer;
       transition: background 0.1s; border-left: 3px solid transparent;
     }
-    .prop-item:hover { background: rgba(255,255,255,0.07); }
-    .prop-item.selected { background: rgba(99,102,241,0.25); border-left-color: #6366f1; }
+    .prop-item:hover { background: rgb(var(--muted)); }
+    .prop-item.selected { background: rgb(var(--accent-soft)); border-left-color: rgb(var(--accent)); }
     .prop-item.critical { border-left-color: #ef4444; }
     .prop-item.warning  { border-left-color: #f59e0b; }
     .prop-item.overperforming { border-left-color: #0ea5e9; }
@@ -55,12 +217,12 @@
 
     /* Report tab */
     .report-tab {
-      padding: 0.35rem 0.85rem; font-size: 0.8rem; border-radius: 0.4rem;
-      border: 1px solid #e2e8f0; background: white; color: #64748b;
+      padding: 0.35rem 0.85rem; font-size: 0.8rem;
+      border: 1px solid rgb(var(--border)); background: rgb(var(--surface)); color: rgb(var(--muted-foreground));
       cursor: pointer; transition: all 0.12s; white-space: nowrap;
     }
-    .report-tab:hover { background: #f1f5f9; color: #1e293b; }
-    .report-tab.active { background: #6366f1; color: white; border-color: #6366f1; font-weight: 600; }
+    .report-tab:hover { background: rgb(var(--muted)); color: rgb(var(--foreground)); }
+    .report-tab.active { background: rgb(var(--accent)); color: rgb(var(--accent-foreground)); border-color: rgb(var(--accent)); font-weight: 600; }
 
     /* Tool pill */
     .tool-pill { display: inline-flex; align-items: center; gap: 0.25rem;
@@ -70,7 +232,7 @@
     .tool-pill.running { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; animation: blink 1.5s infinite; }
 
     /* Stat mini card */
-    .mini-stat { background: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 0.65rem 1rem; }
+    .mini-stat { background: rgb(var(--surface)); border: 1px solid rgb(var(--border)); padding: 0.65rem 1rem; }
     .mini-stat.critical { border-left: 3px solid #ef4444; }
     .mini-stat.warning  { border-left: 3px solid #f59e0b; }
     .mini-stat.overperforming { border-left: 3px solid #0ea5e9; }
@@ -88,8 +250,8 @@
     /* Sidebar status controls */
     .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
     .summary-pill {
-      min-width: 0; border-radius: 8px; border: 1px solid; padding: 0.35rem 0.25rem;
-      text-align: center; line-height: 1.05; background: white;
+      min-width: 0; border: 1px solid; padding: 0.35rem 0.25rem;
+      text-align: center; line-height: 1.05; background: rgb(var(--surface));
     }
     .summary-pill .count { display: block; font-size: 0.86rem; font-weight: 800; }
     .summary-pill .label { display: block; margin-top: 0.08rem; font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
@@ -101,29 +263,29 @@
     .filter-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 0;
                    padding: 0.35rem 0.45rem; font-size: 0.68rem; line-height: 1; font-weight: 700;
                    border-radius: 8px; border: 1px solid; cursor: pointer; transition: all 0.1s; }
-    .filter-chip.all      { border-color: #6366f1; color: #6366f1; }
+    .filter-chip.all      { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
     .filter-chip.critical { border-color: #ef4444; color: #ef4444; }
     .filter-chip.warning  { border-color: #f59e0b; color: #f59e0b; }
     .filter-chip.overperforming { border-color: #0ea5e9; color: #0ea5e9; }
     .filter-chip.onboarding { border-color: #a855f7; color: #a855f7; }
     .filter-chip.ok       { border-color: #22c55e; color: #22c55e; }
     .filter-chip.active   { color: white; }
-    .filter-chip.all.active      { background: #6366f1; }
+    .filter-chip.all.active      { background: rgb(var(--accent)); }
     .filter-chip.critical.active { background: #ef4444; }
     .filter-chip.warning.active  { background: #f59e0b; }
     .filter-chip.overperforming.active { background: #0ea5e9; }
     .filter-chip.onboarding.active { background: #a855f7; }
     .filter-chip.ok.active       { background: #22c55e; }
 
-    .kd-card { background: white; border: 1px solid #dfe4eb; border-radius: 6px; box-shadow: 0 1px 1px rgba(15,23,42,0.03); }
-    .kd-card-title { font-size: 0.85rem; font-weight: 700; color: #111827; }
-    .kd-metric { font-size: 1.65rem; line-height: 1.1; font-weight: 800; color: #111827; letter-spacing: -0.01em; }
+    .kd-card { background: rgb(var(--surface)); border: 1px solid rgb(var(--border)); border-radius: 14px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+    .kd-card-title { font-size: 0.85rem; font-weight: 700; color: rgb(var(--foreground)); }
+    .kd-metric { font-size: 1.65rem; line-height: 1.1; font-weight: 800; color: rgb(var(--foreground)); letter-spacing: -0.01em; }
     .kd-pill { border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.75rem; font-weight: 700; }
     .kd-pill.up { background: #22c55e; color: white; }
     .kd-pill.down { background: #ef4444; color: white; }
     .kd-link { color: #2563eb; font-size: 0.78rem; font-weight: 600; }
-    .kd-table th { color: #64748b; font-size: 0.72rem; text-transform: none; letter-spacing: 0.05em; padding: 0.55rem 0; border-bottom: 1px solid #e5e7eb; text-align: left; }
-    .kd-table td { font-size: 0.82rem; padding: 0.65rem 0; border-bottom: 1px solid #eef2f7; color: #334155; }
+    .kd-table th { color: rgb(var(--muted-foreground)); font-size: 0.72rem; text-transform: none; letter-spacing: 0.05em; padding: 0.55rem 0; border-bottom: 1px solid rgb(var(--border)); text-align: left; }
+    .kd-table td { font-size: 0.82rem; padding: 0.65rem 0; border-bottom: 1px solid rgb(var(--border)); color: rgb(var(--ink-alt)); }
     .kd-table a { color: #3b8dcc; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
   </style>
 </head>
@@ -131,14 +293,14 @@
 <div class="flex h-full">
 
   <!-- ── Sidebar: Property List ─────────────────────────────────────────── -->
-  <aside class="w-72 bg-slate-800 flex flex-col shrink-0">
+  <aside class="w-72 bg-surface-alt flex flex-col shrink-0">
 
     <!-- Portfolio header -->
-    <div class="px-4 py-3 border-b border-slate-700 shrink-0">
+    <div class="px-4 py-3 border-b border-border shrink-0">
       <div class="flex items-center gap-2 mb-2">
         <span class="text-xs font-bold text-indigo-400">HVR</span>
         <div>
-          <div class="font-bold text-sm text-white leading-tight">HVR Smokies</div>
+          <div class="font-bold text-sm text-foreground leading-tight">HVR Smokies</div>
           <div class="text-xs text-slate-400">{{ summary.total_active }} active properties - {{ today }}</div>
         </div>
       </div>
@@ -163,7 +325,7 @@
       </div>
       <!-- Search -->
       <input id="search-input" type="text" placeholder="Search properties..."
-        class="w-full text-xs border border-slate-600 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-700 text-white placeholder-slate-400"
+        class="w-full text-xs border border-border rounded-pill px-3 py-1.5 outline-none focus-visible:shadow-ring bg-surface text-foreground placeholder-muted-foreground"
         oninput="filterList()" />
       <!-- Filter chips -->
       <div class="filter-grid mt-2">
@@ -177,7 +339,7 @@
     </div>
 
     <!-- Portfolio overview button -->
-    <div class="px-3 py-2 border-b border-slate-700 shrink-0">
+    <div class="px-3 py-2 border-b border-border shrink-0">
       <button onclick="selectPortfolio()"
         id="portfolio-btn"
         class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors">
@@ -185,12 +347,12 @@
       </button>
       <button onclick="selectBookingPromos()"
         id="booking-promos-btn"
-        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1">
+        class="w-full text-left px-3 py-2 rounded-pill text-sm font-semibold text-ink-alt hover:bg-muted hover:text-foreground transition-colors mt-1">
         Booking Promo Lab
       </button>
       <button onclick="selectMonthlyPacing()"
         id="monthly-pacing-btn"
-        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1">
+        class="w-full text-left px-3 py-2 rounded-pill text-sm font-semibold text-ink-alt hover:bg-muted hover:text-foreground transition-colors mt-1">
         Monthly Pacing
       </button>
       <button onclick="selectKcitySurge()"
@@ -206,7 +368,7 @@
     </div>
 
     <!-- Footer / CSV refresh -->
-    <div class="px-3 py-2 border-t border-slate-700 shrink-0">
+    <div class="px-3 py-2 border-t border-border shrink-0">
       <div class="text-xs text-slate-400 mb-1.5 flex items-center gap-1.5">
         <span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
         Web Dashboard - Groq Analysis
@@ -219,7 +381,7 @@
       <div id="sync-status" class="text-xs text-slate-400 mb-2 hidden"></div>
 
       <!-- Manual CSV drop -->
-      <div id="upload-area" class="border border-dashed border-slate-600 rounded-lg p-2 text-center cursor-pointer hover:border-indigo-400 hover:bg-slate-700 transition-colors"
+      <div id="upload-area" class="border border-dashed border-border rounded-card p-2 text-center cursor-pointer hover:border-accent hover:bg-muted transition-colors"
            onclick="document.getElementById('csv-file-input').click()">
         <div class="text-xs text-slate-400">Drop CSV to refresh manually</div>
       </div>
@@ -232,7 +394,7 @@
   <main class="flex-1 flex flex-col overflow-hidden">
 
     <!-- Header -->
-    <header class="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
+    <header class="bg-surface border-b border-slate-200 px-5 py-3 shrink-0">
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
           <h1 id="main-title" class="text-base font-bold text-slate-900 truncate">Portfolio Overview</h1>
@@ -246,8 +408,12 @@
             </svg>
             Analyzing...
           </div>
+          <button onclick="toggleTheme()" id="theme-toggle" title="Toggle light / dark"
+            class="text-sm w-8 h-8 flex items-center justify-center bg-muted text-ink-alt hover:bg-surface-alt transition-colors">
+            <span id="theme-toggle-icon">&#9789;</span>
+          </button>
           <button onclick="runCurrentReport()"
-            class="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
+            class="text-xs px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-semibold">
             Run Report
           </button>
         </div>
@@ -328,9 +494,9 @@
       <!-- Report content -->
       <div id="revenue-calendar" class="hidden mb-4"></div>
       <div id="report-content"
-        class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 min-h-48 prose max-w-none">
-        <p class="text-slate-400 text-center py-10 not-prose text-sm">
-          Select a property from the sidebar or click <strong class="text-slate-600">Run Report</strong> for a portfolio analysis.
+        class="haven-topo rounded-card border border-border shadow-sm p-5 min-h-48 prose max-w-none">
+        <p class="text-muted-foreground text-center py-10 not-prose text-sm">
+          Select a property from the sidebar or click <strong class="text-foreground">Run Report</strong> for a portfolio analysis.
         </p>
       </div>
     </div>
@@ -350,6 +516,18 @@ if (!window.marked) {
   };
 }
 marked.setOptions({ breaks: true, gfm: true });
+
+// ─── Theme toggle (light / dark) ───────────────────────────────────────────────
+function syncThemeIcon() {
+  const icon = document.getElementById("theme-toggle-icon");
+  if (icon) icon.innerHTML = document.documentElement.classList.contains("dark") ? "&#9728;" : "&#9789;";
+}
+function toggleTheme() {
+  const isDark = document.documentElement.classList.toggle("dark");
+  try { localStorage.setItem("havenTheme", isDark ? "dark" : "light"); } catch (e) {}
+  syncThemeIcon();
+}
+syncThemeIcon();
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let allProperties = [];
@@ -440,8 +618,8 @@ function renderPropertyList() {
       <div class="prop-item ${p.urgency}${selectedClass}" data-name="${escapeHtml(p.name)}" id="prop-${CSS.escape(p.name)}">
         <span class="${dotClass}"></span>
         <div class="min-w-0 flex-1">
-          <div class="text-xs font-semibold text-slate-100 leading-snug truncate">${escapeHtml(p.display_name)}</div>
-          <div class="text-xs text-slate-400 leading-snug">${p.bedrooms}BR - ${bkd} - ${occ}</div>
+          <div class="text-xs font-semibold text-foreground leading-snug truncate">${escapeHtml(p.display_name)}</div>
+          <div class="text-xs text-muted-foreground leading-snug">${p.bedrooms}BR - ${bkd} - ${occ}</div>
         </div>
       </div>`;
   }).join("");
@@ -639,7 +817,7 @@ function metricCard(title, value, delta, good = true) {
     <div class="kd-card p-5 min-h-[130px]">
       <div class="flex items-start justify-between gap-3">
         <div class="kd-card-title">${title}</div>
-        <div class="text-slate-300 text-sm">i</div>
+        <div class="text-muted-foreground text-sm">i</div>
       </div>
       <div class="flex items-end justify-between gap-3 mt-5 pb-4 border-b border-slate-100">
         <div class="kd-metric">${value}</div>
@@ -693,7 +871,7 @@ function moverTable(title, subtitle, rows, cols) {
           <h3 class="text-lg font-bold text-slate-900">${title}</h3>
           <p class="text-xs text-slate-500 mt-2 leading-snug">${subtitle}</p>
         </div>
-        <span class="text-slate-300">i</span>
+        <span class="text-muted-foreground">i</span>
       </div>
       <table class="kd-table w-full mt-5">
         <thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
@@ -789,7 +967,7 @@ async function loadMonthlyPacing(generate = false) {
           <p class="text-sm text-slate-500 mt-1">Report Builder flags for revenue and paid occupancy. Behind revenue plus weak occupancy is shown first.</p>
         </div>
         <div class="flex gap-2">
-          <button onclick="document.getElementById('monthly-pacing-input').click()" class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 font-semibold">Upload CSV</button>
+          <button onclick="document.getElementById('monthly-pacing-input').click()" class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-surface text-slate-700 font-semibold">Upload CSV</button>
           <button onclick="loadMonthlyPacing(true)" class="text-xs px-3 py-1.5 rounded bg-blue-600 text-white font-semibold">Generate Monthly Tasks</button>
           <input type="file" id="monthly-pacing-input" accept=".csv" class="hidden" onchange="uploadMonthlyPacingCSV(this)" />
         </div>
@@ -1022,7 +1200,7 @@ async function loadBookingPromos(generate = false) {
         <div class="rounded border border-blue-200 bg-blue-50 p-3"><div class="text-xs text-blue-600">Draft</div><div class="text-xl font-bold text-blue-700">${counts.draft || 0}</div></div>
         <div class="rounded border border-amber-200 bg-amber-50 p-3"><div class="text-xs text-amber-600">Reviewed</div><div class="text-xl font-bold text-amber-700">${counts.needs_review || 0}</div></div>
         <div class="rounded border border-green-200 bg-green-50 p-3"><div class="text-xs text-green-600">Approved</div><div class="text-xl font-bold text-green-700">${counts.approved || 0}</div></div>
-        <div class="rounded border border-slate-200 bg-white p-3"><div class="text-xs text-slate-500">API Ready</div><div class="text-xl font-bold">${promotions.filter(p => p.booking_id).length}</div></div>
+        <div class="rounded border border-slate-200 bg-surface p-3"><div class="text-xs text-slate-500">API Ready</div><div class="text-xl font-bold">${promotions.filter(p => p.booking_id).length}</div></div>
       </div>
       <div class="mt-4 rounded-md border border-cyan-100 bg-cyan-50 p-3 text-xs text-cyan-800">
         API push uses Booking.com Connectivity token-based machine accounts. Set BOOKING_CLIENT_ID and BOOKING_CLIENT_SECRET, then add Booking hotel, room, and parent-rate IDs before pushing approved drafts.
@@ -1052,7 +1230,7 @@ function promotionCard(promo) {
       ? `<div class="text-xs font-semibold text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1 mt-2">${escapeHtml(promo.push_error)}</div>`
       : "";
   return `
-    <div class="border border-slate-200 rounded-md bg-white p-4" data-promo-id="${promo.id}">
+    <div class="border border-slate-200 rounded-md bg-surface p-4" data-promo-id="${promo.id}">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
@@ -1200,7 +1378,7 @@ function actionCard(action) {
     ${priceCheck.missing_fields && priceCheck.missing_fields.length ? `<div class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1 mt-2">Missing forward price inputs: ${escapeHtml(priceCheck.missing_fields.join(", "))}</div>` : ""}
   ` : "";
   return `
-    <div class="border border-slate-200 rounded-md p-3 bg-white flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+    <div class="border border-slate-200 rounded-md p-3 bg-surface flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-sm font-bold text-slate-900">${escapeHtml(action.property || "Unknown property")}</span>
@@ -1292,10 +1470,10 @@ function renderPortfolioDashboard() {
           <p class="text-sm text-slate-500 mt-1">Your key metrics at a glance</p>
         </div>
         <div class="flex gap-2">
-          <button class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-600">HVR Smokies</button>
+          <button class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-surface text-slate-600">HVR Smokies</button>
           <button class="text-xs px-3 py-1.5 rounded bg-blue-600 text-white">60 Days</button>
-          <button class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-600">90 Days</button>
-          <button class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-600">120 Days</button>
+          <button class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-surface text-slate-600">90 Days</button>
+          <button class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-surface text-slate-600">120 Days</button>
         </div>
       </div>
       <h3 class="font-bold text-sm mb-4">My Performance</h3>
@@ -1671,19 +1849,19 @@ async function loadHostawayRevenue(prop) {
     // ── YTD KPI bar ────────────────────────────────────────────────────────────
     const ytdBar = `
       <div class="flex flex-wrap gap-4 mb-4">
-        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+        <div class="rounded border border-slate-200 bg-surface px-4 py-3 flex-1 min-w-[120px]">
           <div class="text-xs text-slate-500">YTD Revenue</div>
           <div class="text-xl font-bold text-slate-900">${fmt(data.ytd_revenue)}</div>
         </div>
-        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+        <div class="rounded border border-slate-200 bg-surface px-4 py-3 flex-1 min-w-[120px]">
           <div class="text-xs text-slate-500">YTD Nights</div>
           <div class="text-xl font-bold text-slate-900">${data.ytd_nights || "-"}</div>
         </div>
-        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+        <div class="rounded border border-slate-200 bg-surface px-4 py-3 flex-1 min-w-[120px]">
           <div class="text-xs text-slate-500">YTD ADR</div>
           <div class="text-xl font-bold text-slate-900">${data.ytd_nights ? fmtDec(data.ytd_revenue / data.ytd_nights) : "-"}</div>
         </div>
-        <div class="rounded border border-slate-200 bg-white px-4 py-3 flex-1 min-w-[120px]">
+        <div class="rounded border border-slate-200 bg-surface px-4 py-3 flex-1 min-w-[120px]">
           <div class="text-xs text-slate-500">Year</div>
           <div class="text-xl font-bold text-slate-900">${data.year}</div>
         </div>
@@ -1726,7 +1904,7 @@ async function loadHostawayRevenue(prop) {
           <div class="flex flex-wrap gap-6">${calMonths}</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-slate-500">
             <span class="inline-block w-4 h-4 rounded-full bg-teal-500"></span> Booked
-            <span class="ml-3 inline-block w-4 h-4 rounded-full bg-white border border-slate-300"></span> Open
+            <span class="ml-3 inline-block w-4 h-4 rounded-full bg-surface border border-slate-300"></span> Open
           </div>
         </section>
 
