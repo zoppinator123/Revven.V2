@@ -193,6 +193,11 @@
         class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1">
         Monthly Pacing
       </button>
+      <button onclick="selectKcitySurge()"
+        id="kcity-surge-btn"
+        class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1">
+        KCity Surge DSOs
+      </button>
     </div>
 
     <!-- Property list -->
@@ -309,6 +314,7 @@
       <div id="action-queue" class="hidden mb-5"></div>
       <div id="booking-promos" class="hidden mb-5"></div>
       <div id="monthly-pacing" class="hidden mb-5"></div>
+      <div id="kcity-surge" class="hidden mb-5"></div>
 
       <!-- OTA links (shown when property selected) -->
       <div id="ota-links" class="flex flex-wrap gap-2 mb-3 hidden"></div>
@@ -462,9 +468,11 @@ function selectProperty(prop) {
   document.getElementById("portfolio-btn").classList.remove("bg-indigo-50", "text-indigo-700", "border-indigo-100");
   document.getElementById("portfolio-btn").classList.add("text-slate-600", "bg-transparent", "border-transparent");
   document.getElementById("booking-promos-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
   document.getElementById("monthly-pacing-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
+  document.getElementById("kcity-surge-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
 
   // Show property UI
   showPropertyView(prop);
@@ -479,11 +487,13 @@ function selectPortfolio() {
   updateContextTabs(null);
   document.querySelectorAll(".prop-item").forEach(el => el.classList.remove("selected"));
   document.getElementById("portfolio-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors";
   document.getElementById("booking-promos-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
   document.getElementById("monthly-pacing-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
+  document.getElementById("kcity-surge-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
   showPortfolioView();
   currentReport = "portfolio";
   clearReport();
@@ -494,11 +504,13 @@ function selectBookingPromos() {
   currentReport = "booking_promos";
   document.querySelectorAll(".prop-item").forEach(el => el.classList.remove("selected"));
   document.getElementById("portfolio-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors";
   document.getElementById("booking-promos-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100 mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors mt-1";
   document.getElementById("monthly-pacing-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
+  document.getElementById("kcity-surge-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
   showBookingPromosView();
 }
 
@@ -507,12 +519,29 @@ function selectMonthlyPacing() {
   currentReport = "monthly_pacing";
   document.querySelectorAll(".prop-item").forEach(el => el.classList.remove("selected"));
   document.getElementById("portfolio-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors";
   document.getElementById("booking-promos-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors border border-transparent mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
   document.getElementById("monthly-pacing-btn").className =
-    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100 mt-2";
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors mt-1";
+  document.getElementById("kcity-surge-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
   showMonthlyPacingView();
+}
+
+function selectKcitySurge() {
+  selectedProperty = null;
+  currentReport = "kcity_surge";
+  document.querySelectorAll(".prop-item").forEach(el => el.classList.remove("selected"));
+  document.getElementById("portfolio-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors";
+  document.getElementById("booking-promos-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
+  document.getElementById("monthly-pacing-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors mt-1";
+  document.getElementById("kcity-surge-btn").className =
+    "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors mt-1";
+  showKcitySurgeView();
 }
 
 // ─── View switching ───────────────────────────────────────────────────────────
@@ -526,6 +555,7 @@ function showPortfolioView() {
   document.getElementById("action-queue").classList.remove("hidden");
   document.getElementById("booking-promos").classList.add("hidden");
   document.getElementById("monthly-pacing").classList.add("hidden");
+  document.getElementById("kcity-surge").classList.add("hidden");
   document.getElementById("revenue-calendar").classList.add("hidden");
   document.getElementById("property-cards").classList.add("hidden");
   document.getElementById("ota-links").classList.add("hidden");
@@ -543,6 +573,7 @@ function showBookingPromosView() {
   document.getElementById("portfolio-dashboard").classList.add("hidden");
   document.getElementById("action-queue").classList.add("hidden");
   document.getElementById("monthly-pacing").classList.add("hidden");
+  document.getElementById("kcity-surge").classList.add("hidden");
   document.getElementById("revenue-calendar").classList.add("hidden");
   document.getElementById("property-cards").classList.add("hidden");
   document.getElementById("ota-links").classList.add("hidden");
@@ -561,6 +592,7 @@ function showMonthlyPacingView() {
   document.getElementById("portfolio-dashboard").classList.add("hidden");
   document.getElementById("action-queue").classList.add("hidden");
   document.getElementById("booking-promos").classList.add("hidden");
+  document.getElementById("kcity-surge").classList.add("hidden");
   document.getElementById("property-cards").classList.add("hidden");
   document.getElementById("ota-links").classList.add("hidden");
   document.getElementById("tool-calls").classList.add("hidden");
@@ -568,6 +600,25 @@ function showMonthlyPacingView() {
   document.getElementById("monthly-pacing").classList.remove("hidden");
   document.getElementById("revenue-calendar").classList.add("hidden");
   loadMonthlyPacing(false);
+}
+
+function showKcitySurgeView() {
+  document.getElementById("main-title").textContent = "KCity Surge DSOs";
+  document.getElementById("main-subtitle").textContent =
+    "UT Football & holiday Date Specific Overrides for all 33 KCity listings";
+  document.getElementById("report-tabs").classList.add("hidden");
+  document.getElementById("portfolio-cards").classList.add("hidden");
+  document.getElementById("portfolio-dashboard").classList.add("hidden");
+  document.getElementById("action-queue").classList.add("hidden");
+  document.getElementById("booking-promos").classList.add("hidden");
+  document.getElementById("monthly-pacing").classList.add("hidden");
+  document.getElementById("revenue-calendar").classList.add("hidden");
+  document.getElementById("property-cards").classList.add("hidden");
+  document.getElementById("ota-links").classList.add("hidden");
+  document.getElementById("tool-calls").classList.add("hidden");
+  document.getElementById("report-content").classList.add("hidden");
+  document.getElementById("kcity-surge").classList.remove("hidden");
+  loadKcitySurge();
 }
 
 function fmtMoney(value) {
@@ -762,6 +813,181 @@ async function loadMonthlyPacing(generate = false) {
       </div>
     </section>`;
   attachActionButtons();
+}
+
+async function loadKcitySurge() {
+  const el = document.getElementById("kcity-surge");
+  if (!el) return;
+  el.innerHTML = `<div class="kd-card p-5 text-sm text-slate-500">Loading KCity surge DSOs...</div>`;
+  let data;
+  try {
+    const res = await fetch("/api/kcity-surge");
+    data = await res.json();
+  } catch (e) {
+    el.innerHTML = `<div class="kd-card p-5 text-sm text-red-600">Failed to load KCity surge DSOs: ${escapeHtml(String(e.message || e))}</div>`;
+    return;
+  }
+  if (!data.ok) {
+    el.innerHTML = `<div class="kd-card p-5 text-sm text-red-600">${escapeHtml(data.error || "Error loading KCity DSOs")}</div>`;
+    return;
+  }
+  const actions = data.actions || [];
+  const summary = data.summary || {};
+
+  // Group by event window
+  const byWindow = {};
+  for (const a of actions) {
+    const key = a.target_dates;
+    if (!byWindow[key]) byWindow[key] = { label: a.target_dates, event: a.event_label, demand: a.demand_level, actions: [] };
+    byWindow[key].actions.push(a);
+  }
+
+  const demandBadge = (d) => d === "high"
+    ? `<span class="text-xs font-bold px-2 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">HIGH</span>`
+    : `<span class="text-xs font-bold px-2 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">MEDIUM</span>`;
+
+  const windowCard = (window) => {
+    const highActions = window.actions.filter(a => a.demand_level === "high");
+    const medActions = window.actions.filter(a => a.demand_level === "medium");
+    const allDone = window.actions.every(a => ["applied", "approved"].includes(a.status));
+    const doneBadge = allDone
+      ? `<span class="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded px-2 py-0.5">All Applied</span>`
+      : `<span class="text-xs text-slate-400">${window.actions.filter(a => a.status === "applied").length}/${window.actions.length} applied</span>`;
+
+    const listingRows = window.actions.map(a => {
+      const statusTone = a.status === "applied" ? "text-green-700 bg-green-50 border-green-200"
+        : a.status === "approved" ? "text-blue-700 bg-blue-50 border-blue-200"
+        : "text-slate-500 bg-slate-50 border-slate-200";
+      const canApply = a.pricelabs_payload && a.pricelabs_payload.kind !== "manual_review" && a.status !== "applied";
+      return `
+        <tr class="border-b border-slate-100 last:border-0">
+          <td class="py-2 px-3 text-xs text-slate-700 max-w-[240px] truncate" title="${escapeHtml(a.property)}">${escapeHtml(a.display_name || a.property)}</td>
+          <td class="py-2 px-3 text-xs text-center font-semibold">${a.bedrooms}BR</td>
+          <td class="py-2 px-3 text-xs text-center font-bold text-emerald-700">$${(a.pricelabs_payload?.min_price || 0).toLocaleString()}</td>
+          <td class="py-2 px-3 text-xs">
+            <span class="border rounded px-1.5 py-0.5 text-xs font-semibold ${statusTone}">${escapeHtml(a.status || "pending")}</span>
+          </td>
+          <td class="py-2 px-3 text-xs">
+            ${canApply ? `<button data-action-id="${escapeHtml(a.id)}" data-action="approve-apply" class="action-btn text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 font-semibold">Apply DSO</button>` : ""}
+            ${a.status === "applied" && a.apply_result?.confirmed_dates ? `<span class="text-green-600 text-xs">✓ ${a.apply_result.confirmed_dates.length} dates set</span>` : ""}
+          </td>
+        </tr>`;
+    }).join("");
+
+    return `
+      <div class="border border-slate-200 rounded-lg bg-white overflow-hidden mb-3">
+        <div class="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+          <div class="flex items-center gap-2 flex-wrap">
+            ${demandBadge(window.demand)}
+            <span class="font-semibold text-sm text-slate-800">${escapeHtml(window.event)}</span>
+            <span class="text-xs text-slate-500 font-mono">${escapeHtml(window.label)}</span>
+          </div>
+          <div class="flex items-center gap-3">
+            ${doneBadge}
+            <button data-window="${escapeHtml(window.label)}" class="apply-window-btn text-xs px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 font-semibold">Apply All</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="border-b border-slate-100 bg-slate-50">
+                <th class="py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Listing</th>
+                <th class="py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">BRs</th>
+                <th class="py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Min Price</th>
+                <th class="py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                <th class="py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Action</th>
+              </tr>
+            </thead>
+            <tbody>${listingRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  };
+
+  const highWindows = Object.values(byWindow).filter(w => w.demand === "high");
+  const medWindows = Object.values(byWindow).filter(w => w.demand === "medium");
+
+  el.innerHTML = `
+    <section class="kd-card p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">KCity Surge DSOs</h2>
+          <p class="text-sm text-slate-500 mt-1">UT Football weekends &amp; holiday Date Specific Overrides · 33 KCity listings</p>
+        </div>
+        <button onclick="loadKcitySurge()" class="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 font-semibold">Refresh</button>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+        <div class="rounded border border-slate-200 bg-slate-50 p-3"><div class="text-xs text-slate-500">KCity Listings</div><div class="text-xl font-bold">${summary.total_listings ?? 33}</div></div>
+        <div class="rounded border border-red-200 bg-red-50 p-3"><div class="text-xs text-red-600">HIGH Tasks</div><div class="text-xl font-bold text-red-700">${summary.high_tasks ?? 0}</div></div>
+        <div class="rounded border border-amber-200 bg-amber-50 p-3"><div class="text-xs text-amber-600">MEDIUM Tasks</div><div class="text-xl font-bold text-amber-700">${summary.medium_tasks ?? 0}</div></div>
+        <div class="rounded border border-sky-200 bg-sky-50 p-3"><div class="text-xs text-sky-600">Surge Windows</div><div class="text-xl font-bold text-sky-700">${summary.surge_windows ?? 0}</div></div>
+        <div class="rounded border border-green-200 bg-green-50 p-3"><div class="text-xs text-green-600">Applied</div><div class="text-xl font-bold text-green-700">${actions.filter(a => a.status === "applied").length}</div></div>
+      </div>
+
+      <div class="rounded border border-slate-200 bg-blue-50 px-4 py-3 mb-5 text-xs text-blue-800">
+        <strong>Thresholds:</strong> 1BR HIGH ≥$755 · MED ≥$590 &nbsp;|&nbsp; 2BR HIGH ≥$890 · MED ≥$740 &nbsp;|&nbsp; 3BR HIGH ≥$960 &nbsp;|&nbsp; 4BR HIGH ≥$1,225 &nbsp;|&nbsp; 3BR &amp; 4BR medium dates skipped (below threshold).
+      </div>
+
+      ${highWindows.length ? `<div class="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">🔴 HIGH SURGE DATES</div>${highWindows.map(windowCard).join("")}` : ""}
+      ${medWindows.length ? `<div class="text-xs font-bold uppercase tracking-wide text-slate-400 mt-4 mb-2">🟡 MEDIUM SURGE DATES</div>${medWindows.map(windowCard).join("")}` : ""}
+      ${!actions.length ? `<div class="text-sm text-slate-400 py-4">All surge dates are in the past or no KCity listings found.</div>` : ""}
+    </section>`;
+
+  attachKcitySurgeButtons(actions);
+}
+
+function attachKcitySurgeButtons(actions) {
+  // Single DSO apply buttons
+  document.querySelectorAll("[data-action-id][data-action='approve-apply']").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.actionId;
+      const action = actions.find(a => a.id === id);
+      if (!action) return;
+      btn.disabled = true;
+      btn.textContent = "Applying...";
+      try {
+        const res = await fetch(`/api/actions/${encodeURIComponent(id)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "approved", apply: true }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Apply failed");
+        await loadKcitySurge();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Apply DSO";
+        alert("Apply failed: " + (e.message || e));
+      }
+    });
+  });
+
+  // Apply All buttons per window
+  document.querySelectorAll(".apply-window-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const windowLabel = btn.dataset.window;
+      const windowActions = actions.filter(a => a.target_dates === windowLabel && a.status !== "applied");
+      if (!windowActions.length) { alert("All DSOs in this window are already applied."); return; }
+      if (!confirm(`Apply ${windowActions.length} DSOs for ${windowLabel}?`)) return;
+      btn.disabled = true;
+      btn.textContent = "Applying...";
+      let failed = 0;
+      for (const action of windowActions) {
+        try {
+          const res = await fetch(`/api/actions/${encodeURIComponent(action.id)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "approved", apply: true }),
+          });
+          const data = await res.json();
+          if (!data.ok) failed++;
+        } catch { failed++; }
+      }
+      await loadKcitySurge();
+      if (failed) alert(`${failed} DSOs failed to apply — check individual rows.`);
+    });
+  });
 }
 
 async function loadBookingPromos(generate = false) {

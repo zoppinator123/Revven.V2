@@ -55,6 +55,7 @@ from pricelabs_api import PriceLabsAPIError, client_from_env
 from booking_api import BookingAPIError, build_promotion_xml, client_from_env as booking_client_from_env
 from hostaway_api import HostawayAPIError, client_from_env as hostaway_client_from_env
 from pricelabs_monthly_pacing import SOURCE as MONTHLY_PACING_SOURCE, load_monthly_pacing
+from kcity_surge_dso import generate_dso_tasks, SOURCE as KCITY_DSO_SOURCE
 import supabase_store
 
 app = Flask(__name__)
@@ -2411,6 +2412,11 @@ def _apply_weekly_action(action: dict) -> dict:
                 raise PricingApplyError("This percentage action is missing adjustment_pct.")
             item["price"] = str(round(float(pct) * 100, 2)).rstrip("0").rstrip(".")
             item["price_type"] = "percent"
+        elif kind == "kcity_dso_min_price":
+            min_price = payload.get("min_price")
+            if not min_price:
+                raise PricingApplyError("This DSO action is missing min_price.")
+            item["minPrice"] = int(round(float(min_price)))
         elif kind == "custom_fixed_rate":
             rate = payload.get("suggested_rate")
             if not rate:
@@ -3254,6 +3260,23 @@ def monthly_pacing():
         return jsonify(result)
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc), "has_csv": has_csv, "actions": [], "summary": {}}), 500
+
+
+@app.route("/api/kcity-surge")
+def kcity_surge():
+    try:
+        result = generate_dso_tasks(_PORTFOLIO, TODAY)
+        existing = _load_actions()
+        existing_ids = {a["id"] for a in existing if a.get("source") == KCITY_DSO_SOURCE}
+        for action in result["actions"]:
+            matched = next((a for a in existing if a["id"] == action["id"]), None)
+            if matched:
+                action["status"] = matched.get("status", "pending")
+                action["reviewed_at"] = matched.get("reviewed_at")
+                action["apply_result"] = matched.get("apply_result")
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc), "actions": [], "summary": {}}), 500
 
 
 @app.route("/api/actions/<action_id>", methods=["POST"])
